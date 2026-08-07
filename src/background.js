@@ -10,17 +10,26 @@ const { PENDING_KEY, normalizeUsername, isValidUsername, usernameFromUrl } = glo
 
 const MENU_ID = 'ghun-add-username';
 
-chrome.runtime.onInstalled.addListener(() => {
+/**
+ * `targetUrlPatterns` is deliberately absent: it filters on an anchor's href, so
+ * a selection right-click on plain text has nothing to match and Chrome drops
+ * the item entirely. `documentUrlPatterns` already scopes us to github.com.
+ */
+function createMenu() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ID,
       title: 'Replace this GitHub username…',
-      contexts: ['link', 'selection'],
+      contexts: ['link', 'selection', 'page'],
       documentUrlPatterns: ['https://github.com/*'],
-      targetUrlPatterns: ['https://github.com/*'],
     });
   });
-});
+}
+
+// Menus persist across service worker restarts, but re-registering on startup
+// covers the case where the install event was missed or errored.
+chrome.runtime.onInstalled.addListener(createMenu);
+chrome.runtime.onStartup.addListener(createMenu);
 
 /**
  * Prefer the link target, since a profile link is unambiguous. Fall back to the
