@@ -108,6 +108,23 @@
     return candidate;
   }
 
+  /**
+   * Pull the username out of a hovercard endpoint, e.g. `/users/octocat/hovercard`.
+   * This is the most reliable source available: it comes from the trigger element
+   * GitHub itself annotates, rather than from the popup's markup.
+   *
+   * Organization hovercards use `/orgs/...` and are intentionally not matched.
+   *
+   * @returns {string|null} the username in its original case.
+   */
+  function usernameFromHovercardUrl(url) {
+    const match = /^\/users\/([^/?#]+)\/hovercard/.exec(String(url || ''));
+    if (!match) return null;
+
+    const candidate = decodeURIComponent(match[1]);
+    return isValidUsername(candidate) ? candidate : null;
+  }
+
   /** Merge stored settings over the defaults, discarding malformed values. */
   function coerceSettings(stored) {
     const source = stored && typeof stored === 'object' ? stored : {};
@@ -174,6 +191,7 @@
     buildMatcher,
     looksLikeUrl,
     usernameFromUrl,
+    usernameFromHovercardUrl,
     coerceSettings,
     parseImport,
   };

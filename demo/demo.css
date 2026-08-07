@@ -157,6 +157,45 @@ textarea,
   font: inherit;
 }
 
+/* Mock hovercard — stands in for GitHub's own popup styles. */
+.js-hovercard-content {
+  position: fixed;
+  z-index: 50;
+}
+
+.Popover-message {
+  width: 300px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.mock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mock-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b4553, #202832);
+}
+
+.mock-login {
+  font-weight: 600;
+}
+
+.mock-bio {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .people {
   margin: 0;
   padding: 0;

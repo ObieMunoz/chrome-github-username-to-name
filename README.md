@@ -23,9 +23,16 @@ There is no build step — the folder is the extension.
 **Add a name:** click the toolbar icon, type the username and what to show
 instead, hit Add. Changes apply to open GitHub tabs immediately; no reload.
 
-**Add one from the page:** right-click any username or profile link on GitHub
-and choose **Replace this GitHub username…**. The popup opens with the username
-already filled in.
+**Add one from the page:** hover any username to bring up GitHub's own profile
+card — it now carries a **Show as a real name…** row at the bottom. Click it,
+type the name, press Enter. The page repaints everywhere at once.
+
+Once mapped, that row reads **Showing as "…"** and offers Remove, so the
+hovercard doubles as the edit surface.
+
+**Or right-click:** anywhere on GitHub, choose **Replace this GitHub
+username…**. Right-clicking a profile link or a selected username prefills it;
+elsewhere the popup just opens ready for input.
 
 **Pause everything:** the switch in the popup header turns all replacement off
 without deleting anything — handy when you need to read a page as it really is,
@@ -80,7 +87,8 @@ you want pure neon in both themes.
 manifest.json          MV3 manifest
 src/common.js          shared helpers — matcher, validation, import parsing
 src/content.js         the text-walking engine
-src/content.css        the neon styling
+src/content.css        the neon styling and injected UI
+src/hovercard.js       the "Show as a real name…" row and its editor panel
 src/background.js      the right-click menu
 src/popup.*            the management UI
 test/                  node:test + jsdom
@@ -107,7 +115,23 @@ the theme, toggling replacement, and injecting a late comment to exercise the
 mutation observer.
 
 After changing extension source, hit reload on the card in `chrome://extensions`
-and refresh your GitHub tab.
+**and** refresh your GitHub tab. Both steps matter: reloading alone leaves the
+old `content.css` attached to already-open tabs, which shows up as working
+behaviour with no styling.
+
+### Notes on the hovercard row
+
+The username comes from `data-hovercard-url` on the trigger element GitHub
+itself annotates (`/users/<login>/hovercard`), not from the popup's markup —
+that value is unambiguous and survives their markup changing. It is reassigned
+on every hover, including to null, so an organization card can never inherit
+the previously hovered user.
+
+The editor panel is appended to `<body>`, deliberately not inside the
+hovercard: GitHub tears the hovercard down as soon as the pointer leaves it,
+which would destroy an inline form mid-typing. Its position and z-index are set
+inline rather than in CSS, so a stale or missing stylesheet can't drop it into
+normal page flow.
 
 ## Scope
 

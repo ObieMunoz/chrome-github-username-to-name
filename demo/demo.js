@@ -20,9 +20,16 @@
   window.chrome = {
     runtime: { id: 'demo-extension', lastError: null },
     storage: {
+      // Real chrome.storage supports both a callback and a promise; hovercard.js
+      // uses the promise form and content.js the callback form, so match both.
       sync: {
         get(key, callback) {
-          setTimeout(() => callback({ [key]: settings }), 0);
+          const value = { [key]: settings };
+          if (typeof callback === 'function') {
+            setTimeout(() => callback(value), 0);
+            return undefined;
+          }
+          return Promise.resolve(value);
         },
         set(items, callback) {
           const oldValue = settings;
@@ -30,7 +37,8 @@
           for (const listener of listeners) {
             listener({ [STORAGE_KEY]: { newValue: settings, oldValue } }, 'sync');
           }
-          if (callback) callback();
+          if (typeof callback === 'function') callback();
+          return Promise.resolve();
         },
       },
       onChanged: {

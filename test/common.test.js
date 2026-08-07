@@ -4,7 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 require('../src/common.js');
-const { buildMatcher, usernameFromUrl, parseImport, coerceSettings, looksLikeUrl } = globalThis.GHUN;
+const {
+  buildMatcher,
+  usernameFromUrl,
+  usernameFromHovercardUrl,
+  parseImport,
+  coerceSettings,
+  looksLikeUrl,
+} = globalThis.GHUN;
 
 /** Run the matcher the way content.js does and return the matched tokens. */
 function matches(mappings, text) {
@@ -90,6 +97,19 @@ test('usernameFromUrl accepts profile links only', () => {
   assert.equal(usernameFromUrl('https://github.com/pricing'), null);
   assert.equal(usernameFromUrl('https://evil.example.com/u1069002'), null);
   assert.equal(usernameFromUrl('not a url at all'), null);
+});
+
+test('usernameFromHovercardUrl reads GitHub user hovercard endpoints', () => {
+  assert.equal(usernameFromHovercardUrl('/users/u1069002/hovercard'), 'u1069002');
+  assert.equal(usernameFromHovercardUrl('/users/mona-lisa/hovercard?subject_id=1'), 'mona-lisa');
+});
+
+test('usernameFromHovercardUrl ignores organizations and junk', () => {
+  // An org row must not inherit the previously hovered user.
+  assert.equal(usernameFromHovercardUrl('/orgs/github/hovercard'), null);
+  assert.equal(usernameFromHovercardUrl('/users/not a username!/hovercard'), null);
+  assert.equal(usernameFromHovercardUrl(''), null);
+  assert.equal(usernameFromHovercardUrl(null), null);
 });
 
 test('coerceSettings drops malformed entries and defaults enabled to true', () => {

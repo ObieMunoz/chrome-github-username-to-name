@@ -63,6 +63,8 @@
     if (isEditable(el)) return true;
     // Our own output — the guard that stops the observer looping on itself.
     if (el.hasAttribute(USER_ATTR)) return true;
+    // Our own injected UI, which must keep showing raw usernames.
+    if (el.hasAttribute('data-ghun-ui')) return true;
     return false;
   }
 
@@ -271,8 +273,15 @@
     document.addEventListener('turbo:frame-load', (event) => scan(event.target));
   }
 
-  // Exposed for the test suite and the offline demo page.
-  globalThis.GHUN_ENGINE = { scan, restoreAll, applySettings, start, shutdown };
+  // Exposed for hovercard.js, the test suite, and the offline demo page.
+  globalThis.GHUN_ENGINE = {
+    scan,
+    restoreAll,
+    applySettings,
+    start,
+    shutdown,
+    getSettings: () => settings,
+  };
 
   if (typeof chrome !== 'undefined' && chrome.storage) start();
 })();

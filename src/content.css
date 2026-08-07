@@ -51,3 +51,116 @@ html[data-color-mode='dark'] .ghun-name {
   color: #39ff14 !important;
   text-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
 }
+
+/* ---------------------------------------------------------------------------
+ * Injected UI: the hovercard row and the editor panel.
+ *
+ * Colors come from GitHub's own theme variables where available, so this
+ * tracks whichever theme is active, with fallbacks if those names change.
+ * ------------------------------------------------------------------------- */
+
+.ghun-card-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, rgba(128, 128, 128, 0.3)));
+}
+
+.ghun-card-button {
+  display: block;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fgColor-accent, var(--color-accent-fg, #4493f8));
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ghun-card-button:hover {
+  background: var(--bgColor-neutral-muted, var(--color-neutral-muted, rgba(128, 128, 128, 0.15)));
+}
+
+#ghun-panel {
+  position: fixed;
+  z-index: 2147483647;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #30363d));
+  border-radius: 8px;
+  background: var(--bgColor-default, var(--color-canvas-overlay, #161b22));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: var(--fgColor-default, var(--color-fg-default, #e6edf3));
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+#ghun-panel .ghun-panel-title {
+  margin-bottom: 8px;
+  overflow: hidden;
+  color: var(--fgColor-muted, var(--color-fg-muted, #8b949e));
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#ghun-panel .ghun-panel-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #30363d));
+  border-radius: 6px;
+  background: var(--bgColor-inset, var(--color-canvas-inset, #0d1117));
+  color: inherit;
+  font: inherit;
+}
+
+#ghun-panel .ghun-panel-input:focus {
+  border-color: #39ff14;
+  outline: none;
+}
+
+#ghun-panel .ghun-panel-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+#ghun-panel button {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #30363d));
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Same theme cascade as .ghun-name: neon by default, readable green on light. */
+#ghun-panel .ghun-panel-save {
+  border-color: rgba(57, 255, 20, 0.45);
+  background: rgba(57, 255, 20, 0.14);
+  color: #39ff14;
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: light) {
+  #ghun-panel .ghun-panel-save {
+    color: #00891c;
+  }
+}
+
+html[data-color-mode='light'] #ghun-panel .ghun-panel-save {
+  color: #00891c;
+}
+
+html[data-color-mode='dark'] #ghun-panel .ghun-panel-save {
+  color: #39ff14;
+}
+
+#ghun-panel .ghun-panel-remove {
+  color: var(--fgColor-danger, var(--color-danger-fg, #f85149));
+}

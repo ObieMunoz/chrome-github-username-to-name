@@ -21,6 +21,52 @@
     enabledButton.textContent = next ? 'Turn replacements off' : 'Turn replacements on';
   });
 
+  // --- mock hovercard ---------------------------------------------------
+  // Stands in for GitHub's profile popup so the injected row and the editor
+  // panel can be checked without installing the extension.
+
+  const { usernameFromHovercardUrl } = globalThis.GHUN;
+  let card = null;
+  let cardTimer = null;
+
+  function hideCard() {
+    if (card) card.remove();
+    card = null;
+  }
+
+  function showCard(trigger) {
+    hideCard();
+    const username = usernameFromHovercardUrl(trigger.getAttribute('data-hovercard-url'));
+    if (!username) return;
+
+    const rect = trigger.getBoundingClientRect();
+    card = document.createElement('div');
+    card.className = 'js-hovercard-content';
+    card.style.left = `${rect.left}px`;
+    card.style.top = `${rect.bottom + 8}px`;
+    card.innerHTML =
+      '<div class="Popover-message">' +
+      '<div class="mock-head"><span class="mock-avatar"></span>' +
+      `<span class="mock-login">${username}</span></div>` +
+      '<p class="mock-bio">Engineering Manager · Tampa, Florida</p>' +
+      '<p class="mock-bio">Opened this pull request</p>' +
+      '</div>';
+    card.addEventListener('mouseleave', hideCard);
+    document.body.appendChild(card);
+  }
+
+  document.addEventListener('mouseover', (event) => {
+    const trigger = event.target.closest && event.target.closest('[data-hovercard-url]');
+    if (!trigger) return;
+    clearTimeout(cardTimer);
+    cardTimer = setTimeout(() => showCard(trigger), 200);
+  });
+
+  document.addEventListener('mouseout', (event) => {
+    const trigger = event.target.closest && event.target.closest('[data-hovercard-url]');
+    if (trigger) clearTimeout(cardTimer);
+  });
+
   let injected = 0;
   injectButton.addEventListener('click', () => {
     injected += 1;
