@@ -66,6 +66,37 @@ test('never rewrites text that is a URL', () => {
   assert.equal($(window, '#t').textContent, 'https://github.com/u1069002');
 });
 
+test('leaves a repo name alone when it matches its owner', () => {
+  // The real breadcrumb for github.com/ObieMunoz/obiemunoz.com: the owner is a
+  // person and should be replaced, the repo slug is an identifier and must not.
+  const window = setup(
+    '<span id="crumb">' +
+      '<a id="owner" href="/obiemunoz">obiemunoz</a> / ' +
+      '<a id="repo" href="/obiemunoz/obiemunoz.com">obiemunoz.com</a>' +
+      '</span>',
+    { mappings: { obiemunoz: 'Obie Munoz' } }
+  );
+
+  assert.equal($(window, '#owner').textContent, 'Obie Munoz');
+  assert.equal($(window, '#repo').textContent, 'obiemunoz.com');
+});
+
+test('leaves a repo named exactly like its owner alone', () => {
+  const window = setup('<a id="repo" href="/obiemunoz/obiemunoz">obiemunoz</a>', {
+    mappings: { obiemunoz: 'Obie Munoz' },
+  });
+  assert.equal($(window, '#repo').textContent, 'obiemunoz');
+});
+
+test('still replaces mentions inside deeper repo links', () => {
+  // A PR title can legitimately name someone; only the repo root is skipped.
+  const window = setup(
+    '<a id="pr" href="/obiemunoz/site/pull/12">fix reported by obiemunoz</a>',
+    { mappings: { obiemunoz: 'Obie Munoz' } }
+  );
+  assert.equal($(window, '#pr').textContent, 'fix reported by Obie Munoz');
+});
+
 test('leaves the profile link href untouched', () => {
   const window = setup('<a id="a" href="/u1069002" class="author">u1069002</a>');
   const link = $(window, '#a');

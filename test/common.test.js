@@ -7,6 +7,7 @@ require('../src/common.js');
 const {
   buildMatcher,
   usernameFromUrl,
+  isRepoRootPath,
   usernameFromHovercardUrl,
   parseImport,
   coerceSettings,
@@ -54,6 +55,22 @@ test('does not match inside an email address', () => {
   assert.deepEqual(matches(OBIE, 'from foo@u1069002.example.com today'), []);
 });
 
+test('does not match a username inside a domain name', () => {
+  // A repo or site named after its owner: obiemunoz.com must stay literal.
+  const mappings = { obiemunoz: 'Obie Munoz' };
+  assert.deepEqual(matches(mappings, 'obiemunoz.com'), []);
+  assert.deepEqual(matches(mappings, 'the obiemunoz.com repo'), []);
+  assert.deepEqual(matches(mappings, 'obiemunoz.dev and obiemunoz.io'), []);
+});
+
+test('still matches a username ending a sentence', () => {
+  // The trailing dot is punctuation here, not a domain.
+  const mappings = { obiemunoz: 'Obie Munoz' };
+  assert.deepEqual(matches(mappings, 'shipped by obiemunoz.'), ['obiemunoz']);
+  assert.deepEqual(matches(mappings, 'thanks obiemunoz. Next up…'), ['obiemunoz']);
+  assert.deepEqual(matches(mappings, 'ask obiemunoz, then merge'), ['obiemunoz']);
+});
+
 test('does not match a path segment', () => {
   assert.deepEqual(matches(OBIE, 'see /u1069002 for details'), []);
 });
@@ -97,6 +114,17 @@ test('usernameFromUrl accepts profile links only', () => {
   assert.equal(usernameFromUrl('https://github.com/pricing'), null);
   assert.equal(usernameFromUrl('https://evil.example.com/u1069002'), null);
   assert.equal(usernameFromUrl('not a url at all'), null);
+});
+
+test('isRepoRootPath identifies repo home links only', () => {
+  assert.equal(isRepoRootPath('/ObieMunoz/obiemunoz.com'), true);
+  assert.equal(isRepoRootPath('https://github.com/ObieMunoz/obiemunoz.com'), true);
+  // A profile link must stay replaceable.
+  assert.equal(isRepoRootPath('/ObieMunoz'), false);
+  // Deeper paths are page titles that may legitimately mention someone.
+  assert.equal(isRepoRootPath('/ObieMunoz/obiemunoz.com/pull/12'), false);
+  assert.equal(isRepoRootPath('/orgs/github'), false);
+  assert.equal(isRepoRootPath('https://evil.example.com/a/b'), false);
 });
 
 test('usernameFromHovercardUrl reads GitHub user hovercard endpoints', () => {

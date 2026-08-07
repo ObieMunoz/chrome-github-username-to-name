@@ -13,6 +13,7 @@
     DEFAULT_SETTINGS,
     buildMatcher,
     looksLikeUrl,
+    isRepoRootPath,
     coerceSettings,
   } = globalThis.GHUN;
 
@@ -58,9 +59,18 @@
     return el.getAttribute('role') === 'textbox';
   }
 
+  /**
+   * A link to a repo's home page shows a repo slug, not a person. Skipping it
+   * keeps a repo named after its owner readable as itself.
+   */
+  function isRepoLink(el) {
+    return el.tagName === 'A' && isRepoRootPath(el.getAttribute('href') || '');
+  }
+
   function isSkippableElement(el) {
     if (SKIP_TAGS.has(el.tagName)) return true;
     if (isEditable(el)) return true;
+    if (isRepoLink(el)) return true;
     // Our own output — the guard that stops the observer looping on itself.
     if (el.hasAttribute(USER_ATTR)) return true;
     // Our own injected UI, which must keep showing raw usernames.

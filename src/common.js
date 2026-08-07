@@ -60,6 +60,10 @@
    * URL path; a genuine `@mention` still matches because the `@` is captured by
    * group 1, which sits after the lookbehind.
    *
+   * The trailing `(?!\.[A-Za-z0-9])` separates a domain from punctuation: a dot
+   * with more characters after it means `obiemunoz.com`, which must not match,
+   * while a dot at the end of a sentence ("thanks u1069002.") still does.
+   *
    * @returns {RegExp|null} null when there is nothing to match.
    */
   function buildMatcher(mappings) {
@@ -71,7 +75,7 @@
 
     const alternation = names.map(escapeRegExp).join('|');
     return new RegExp(
-      `(?<![A-Za-z0-9\\-@._/])(@?)(${alternation})(?![A-Za-z0-9\\-_])`,
+      `(?<![A-Za-z0-9\\-@._/])(@?)(${alternation})(?![A-Za-z0-9\\-_])(?!\\.[A-Za-z0-9])`,
       'gi'
     );
   }
@@ -106,6 +110,29 @@
     if (!isValidUsername(candidate)) return null;
     if (RESERVED_PATHS.has(candidate.toLowerCase())) return null;
     return candidate;
+  }
+
+  /**
+   * True for a link pointing at a repository's home page, e.g. `/octocat/hello`.
+   *
+   * A repo slug is an identifier rather than a reference to a person, so a repo
+   * that happens to share its owner's name ("obiemunoz.com", or just
+   * "obiemunoz") must keep reading literally. Exactly two segments is the point:
+   * `/owner` stays replaceable, and deeper paths like `/owner/repo/pull/12` are
+   * page titles that may legitimately mention someone.
+   */
+  function isRepoRootPath(url) {
+    let parsed;
+    try {
+      parsed = new URL(String(url), 'https://github.com');
+    } catch {
+      return false;
+    }
+    if (parsed.hostname && parsed.hostname !== 'github.com') return false;
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length !== 2) return false;
+    return !RESERVED_PATHS.has(segments[0].toLowerCase());
   }
 
   /**
@@ -191,6 +218,7 @@
     buildMatcher,
     looksLikeUrl,
     usernameFromUrl,
+    isRepoRootPath,
     usernameFromHovercardUrl,
     coerceSettings,
     parseImport,

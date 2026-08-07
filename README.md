@@ -52,6 +52,7 @@ real damage:
 | `textarea`, `input`, `contenteditable`, `role="textbox"` | GitHub's comment box is a real editor. Rewriting it would change what you actually submit. |
 | `code`, `pre`, `kbd`, `samp` | A username in a code block is usually part of a command or path, where a silent rewrite hands you a broken copy-paste. |
 | Text containing a URL | Rewriting `https://github.com/u1069002` would make the visible text disagree with where the link goes. |
+| Links to a repo's home page | A repo slug is an identifier, not a person. `ObieMunoz / obiemunoz.com` renders as `Obie Munoz / obiemunoz.com` — the owner is a person, the repo name is not. Only exactly-two-segment paths are skipped, so a PR title at `/owner/repo/pull/12` can still name someone. |
 | `href` attributes | Only text nodes are touched, so links keep pointing where GitHub put them. |
 | Avatar `alt` / `title` attributes | Left raw on purpose, so hovering always gets you back to the real username. |
 
@@ -59,6 +60,10 @@ Matching is case-insensitive and boundary-aware: `u1069002` will not match
 inside `u10690021`, `u1069002-bot`, `team-u1069002`, or `foo@u1069002.com`.
 Boundaries use explicit lookarounds rather than `\b`, because GitHub usernames
 can contain hyphens.
+
+A trailing dot is read in context, so a username that is also a domain stays
+intact: `obiemunoz.com` is left alone, while `thanks obiemunoz.` at the end of
+a sentence still gets replaced.
 
 ## How it works
 
