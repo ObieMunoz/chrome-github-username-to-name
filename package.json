@@ -1,0 +1,13 @@
+{
+  "name": "chrome-github-username-to-name",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Chrome extension that shows real names instead of GitHub usernames.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "icons": "node tools/make-icons.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

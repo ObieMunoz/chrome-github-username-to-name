@@ -1,0 +1,53 @@
+/*
+ * Styling for a replaced username.
+ *
+ * `!important` is deliberate: GitHub sets link colors with high specificity,
+ * and these spans usually live inside an <a>.
+ *
+ * The color is theme-aware because neon #39ff14 measures 1.36:1 against
+ * GitHub's white background — unreadable — while scoring 13.96:1 on the dark
+ * theme. Light mode drops to a deep green at 4.57:1, which clears WCAG AA and
+ * still reads unmistakably as "this was rewritten".
+ */
+.ghun-name {
+  color: #39ff14 !important;
+  text-decoration: underline dotted !important;
+  text-decoration-color: currentColor !important;
+  text-decoration-thickness: 1px !important;
+  text-underline-offset: 2px;
+
+  /* Sharpens the neon against mid-tone backdrops; invisible on dark. */
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+
+  /* Inherit everything else so layout and weight never shift. */
+  font: inherit;
+  background: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ghun-name:hover {
+  text-decoration-style: solid !important;
+}
+
+/* System preference, which also covers GitHub's data-color-mode="auto". */
+@media (prefers-color-scheme: light) {
+  .ghun-name {
+    color: #00891c !important;
+    text-shadow: none;
+  }
+}
+
+/*
+ * GitHub's explicit theme choice overrides the system preference. These carry
+ * higher specificity than the media query above, so whichever one matches wins.
+ */
+html[data-color-mode='light'] .ghun-name {
+  color: #00891c !important;
+  text-shadow: none;
+}
+
+html[data-color-mode='dark'] .ghun-name {
+  color: #39ff14 !important;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+}

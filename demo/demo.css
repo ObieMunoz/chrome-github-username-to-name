@@ -1,0 +1,169 @@
+/* Rough stand-in for GitHub's light and dark surfaces. Demo only. */
+:root {
+  --bg: #0d1117;
+  --card: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --link: #4493f8;
+}
+
+html[data-theme='light'] {
+  --bg: #ffffff;
+  --card: #ffffff;
+  --border: #d1d9e0;
+  --text: #1f2328;
+  --muted: #59636e;
+  --link: #0969da;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0 0 40px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  font-size: 12px;
+}
+
+.toolbar .hint {
+  flex: 1;
+  color: var(--muted);
+}
+
+.toolbar button {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.page {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 16px;
+  max-width: 940px;
+  margin: 20px auto;
+  padding: 0 20px;
+}
+
+.card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.page > section {
+  grid-column: 1;
+}
+
+.page > aside {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.pr,
+.comment {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.pr:first-of-type,
+.comment:first-of-type {
+  border-top: none;
+}
+
+.pr-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.meta,
+.comment-head {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.comment-body p {
+  margin: 6px 0 0;
+}
+
+.label {
+  margin: 14px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+pre {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(127, 127, 127, 0.1);
+  overflow-x: auto;
+}
+
+code,
+pre,
+.url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+textarea,
+.editor {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.people {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.people li {
+  padding: 4px 0;
+  font-size: 13px;
+}

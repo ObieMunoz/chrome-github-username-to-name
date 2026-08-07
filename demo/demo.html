@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-color-mode="dark">
+  <head>
+    <meta charset="utf-8" />
+    <title>Demo — GitHub Username Renamer</title>
+    <link rel="stylesheet" href="demo.css" />
+    <link rel="stylesheet" href="../src/content.css" />
+  </head>
+  <body>
+    <div class="toolbar">
+      <strong>Offline demo</strong>
+      <span class="hint">Not GitHub — a stand-in page for checking the styling and the skip rules.</span>
+      <button type="button" id="toggle-theme">Light theme</button>
+      <button type="button" id="toggle-enabled">Turn replacements off</button>
+      <button type="button" id="inject">Inject a late comment</button>
+    </div>
+
+    <main class="page">
+      <section class="card">
+        <h2>Pull requests</h2>
+        <div class="pr">
+          <a class="pr-title" href="#">Fix flaky auth test</a>
+          <div class="meta">#412 opened 3 hours ago by <a href="/u1069002">u1069002</a></div>
+        </div>
+        <div class="pr">
+          <a class="pr-title" href="#">Bump dependencies</a>
+          <div class="meta">#411 opened yesterday by <a href="/octocat">octocat</a> · review requested from <a href="/u1069002">u1069002</a></div>
+        </div>
+        <div class="pr">
+          <a class="pr-title" href="#">Unrelated contributor PR</a>
+          <div class="meta">#410 opened 2 days ago by <a href="/someone-else">someone-else</a></div>
+        </div>
+      </section>
+
+      <section class="card" id="thread">
+        <h2>Conversation</h2>
+        <div class="comment">
+          <div class="comment-head"><a href="/u1069002">u1069002</a> commented 2 hours ago</div>
+          <div class="comment-body">
+            <p>Taking a look now. @octocat can you confirm the staging config?</p>
+          </div>
+        </div>
+        <div class="comment">
+          <div class="comment-head"><a href="/octocat">octocat</a> commented 1 hour ago</div>
+          <div class="comment-body">
+            <p>Confirmed. Nice catch @u1069002 — that had been failing since Tuesday.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Things that must stay untouched</h2>
+
+        <p class="label">Code block — a rewrite here would break copy-paste:</p>
+        <pre><code>git log --author=u1069002 --oneline</code></pre>
+
+        <p class="label">Comment box — a rewrite here would change what you submit:</p>
+        <textarea rows="2">cc @u1069002 please take another look</textarea>
+
+        <p class="label">Rich-text editor (contenteditable):</p>
+        <div class="editor" contenteditable="true">ping u1069002 about this</div>
+
+        <p class="label">A URL, where the text must keep matching the target:</p>
+        <p class="url">https://github.com/u1069002</p>
+      </section>
+
+      <aside class="card">
+        <h2>Reviewers</h2>
+        <ul class="people">
+          <li><a href="/u1069002">u1069002</a></li>
+          <li><a href="/octocat">octocat</a></li>
+          <li><a href="/someone-else">someone-else</a></li>
+        </ul>
+      </aside>
+    </main>
+
+    <script src="../src/common.js"></script>
+    <script src="demo.js"></script>
+    <script src="../src/content.js"></script>
+    <script src="demo-controls.js"></script>
+  </body>
+</html>
