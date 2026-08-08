@@ -3,11 +3,8 @@
   "name": "GitHub Username Renamer",
   "version": "1.0.0",
   "description": "Show real names instead of GitHub usernames across github.com, with profile links left intact.",
-  "permissions": ["storage", "contextMenus"],
+  "permissions": ["storage"],
   "host_permissions": ["https://github.com/*"],
-  "background": {
-    "service_worker": "src/background.js"
-  },
   "action": {
     "default_popup": "src/popup.html",
     "default_title": "GitHub Username Renamer",
