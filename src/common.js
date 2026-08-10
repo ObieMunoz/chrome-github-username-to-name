@@ -52,6 +52,21 @@
   }
 
   /**
+   * Rejects a match that is really the local part of an email address.
+   *
+   * An address is an identifier rather than a reference to a person, so the
+   * merge screen's `95655512+obiemunoz@users.noreply.github.com` has to stay
+   * verbatim — a rewritten address is no longer the address.
+   *
+   * The other ways a username can sit in an address are already covered by the
+   * boundaries in `buildMatcher`: a leading `.`, `-` or `_`, a trailing `-` or
+   * `_`, and the domain side of `foo@user.example.com` all fail those. What is
+   * left is the token running up to the `@`, either directly or through a
+   * `+tag` suffix, which is what this rejects.
+   */
+  const EMAIL_LOCAL_PART = '(?!(?:\\+[A-Za-z0-9._+-]*)?@[A-Za-z0-9])';
+
+  /**
    * Build one regex matching any mapped username as a standalone token.
    *
    * `\b` is wrong here because usernames may contain hyphens, so the boundaries
@@ -75,7 +90,8 @@
 
     const alternation = names.map(escapeRegExp).join('|');
     return new RegExp(
-      `(?<![A-Za-z0-9\\-@._/])(@?)(${alternation})(?![A-Za-z0-9\\-_])(?!\\.[A-Za-z0-9])`,
+      `(?<![A-Za-z0-9\\-@._/])(@?)(${alternation})` +
+        `(?![A-Za-z0-9\\-_])(?!\\.[A-Za-z0-9])${EMAIL_LOCAL_PART}`,
       'gi'
     );
   }

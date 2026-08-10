@@ -65,6 +65,11 @@ A trailing dot is read in context, so a username that is also a domain stays
 intact: `obiemunoz.com` is left alone, while `thanks obiemunoz.` at the end of
 a sentence still gets replaced.
 
+Email addresses are left verbatim on both sides of the `@`, because a rewritten
+address is no longer the address. That covers the merge screen's "This commit
+will be authored by `95655512+obiemunoz@users.noreply.github.com`", which is
+still an address even though your username is sitting in the middle of it.
+
 ## How it works
 
 `src/content.js` walks text nodes with a `TreeWalker`, pruning skipped subtrees

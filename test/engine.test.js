@@ -66,6 +66,16 @@ test('never rewrites text that is a URL', () => {
   assert.equal($(window, '#t').textContent, 'https://github.com/u1069002');
 });
 
+test('leaves the author email on the merge screen intact', () => {
+  // The real "Confirm merge" line, where the rewrite produced a nonsense
+  // address: "95655512+Obie Munoz@users.noreply.github.com".
+  const line = 'This commit will be authored by 95655512+obiemunoz@users.noreply.github.com';
+  const window = setup(`<p id="t">${line}</p>`, { mappings: { obiemunoz: 'Obie Munoz' } });
+
+  assert.equal($(window, '#t').textContent, line);
+  assert.equal(replacedSpans(window).length, 0);
+});
+
 test('leaves a repo name alone when it matches its owner', () => {
   // The real breadcrumb for github.com/ObieMunoz/obiemunoz.com: the owner is a
   // person and should be replaced, the repo slug is an identifier and must not.

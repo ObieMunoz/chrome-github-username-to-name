@@ -55,6 +55,27 @@ test('does not match inside an email address', () => {
   assert.deepEqual(matches(OBIE, 'from foo@u1069002.example.com today'), []);
 });
 
+test('does not match the local part of an email address', () => {
+  // The merge screen's "This commit will be authored by …" line. An address is
+  // an identifier, and a rewritten one is no longer the address.
+  const mappings = { obiemunoz: 'Obie Munoz' };
+  assert.deepEqual(
+    matches(mappings, 'authored by 95655512+obiemunoz@users.noreply.github.com'),
+    []
+  );
+  assert.deepEqual(matches(mappings, 'obiemunoz@example.com'), []);
+  assert.deepEqual(matches(mappings, 'obiemunoz+github@example.com'), []);
+  assert.deepEqual(matches(mappings, 'j.obiemunoz@example.com'), []);
+  assert.deepEqual(matches(mappings, 'mailto:obiemunoz@example.com'), []);
+});
+
+test('still matches a username beside a stray @ or +', () => {
+  // Neither is an address, so prose keeps reading as prose.
+  const mappings = { obiemunoz: 'Obie Munoz' };
+  assert.deepEqual(matches(mappings, 'ping obiemunoz@ when free'), ['obiemunoz']);
+  assert.deepEqual(matches(mappings, 'obiemunoz+1 on that'), ['obiemunoz']);
+});
+
 test('does not match a username inside a domain name', () => {
   // A repo or site named after its owner: obiemunoz.com must stay literal.
   const mappings = { obiemunoz: 'Obie Munoz' };
