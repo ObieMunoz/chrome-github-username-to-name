@@ -36,6 +36,25 @@
     'SVG', 'MATH', 'IFRAME', 'OBJECT', 'CANVAS', 'VIDEO', 'AUDIO',
   ]);
 
+  /**
+   * Code that isn't marked up as code.
+   *
+   * GitHub's file and blame views render every source line as a plain `div`, so
+   * the tag list above never fires there and a username sitting in source got
+   * rewritten — exactly the broken copy-paste CODE/PRE exists to prevent. Diff
+   * views are already safe: they use a real `code.diff-text` per line.
+   *
+   * These are GitHub's own unhashed class names, which is what makes them worth
+   * matching on; the `*-module__*` classes around them are build hashes and
+   * change without notice.
+   */
+  const SKIP_SELECTOR = [
+    '.react-code-file-contents', // file view: the whole code body, pruned in one hit
+    '.react-code-text', // file + blame view: one line's contents
+    '.react-file-line', // file + blame view: the line itself
+    '[data-testid="code-cell"]', // the same line, by the hook GitHub tests against
+  ].join(',');
+
   /** Above this many queued roots it's cheaper to rescan the document once. */
   const FULL_RESCAN_THRESHOLD = 60;
 
@@ -69,6 +88,7 @@
 
   function isSkippableElement(el) {
     if (SKIP_TAGS.has(el.tagName)) return true;
+    if (el.matches(SKIP_SELECTOR)) return true;
     if (isEditable(el)) return true;
     if (isRepoLink(el)) return true;
     // Our own output — the guard that stops the observer looping on itself.
