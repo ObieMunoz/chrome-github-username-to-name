@@ -1,23 +1,62 @@
 /*
+ * The highlight color, in two variants, plus the defaults they fall back to
+ * before the content script has read the user's pick out of storage.
+ *
+ * Two are needed because one color cannot serve both themes: neon #39ff14
+ * measures 1.36:1 against GitHub's white background — unreadable — while
+ * scoring 13.96:1 on the dark theme. The light variant is a deep green at
+ * 4.57:1, which clears WCAG AA and still reads unmistakably as "this was
+ * rewritten".
+ *
+ * A custom color is picked once, for whichever theme the user is in; content.js
+ * derives the other variant and sets both properties on <html>. Choosing between
+ * them stays a pure CSS decision, resolved once into --ghun-color by the cascade
+ * below so that nothing further down has to repeat it.
+ */
+:root {
+  --ghun-color-dark: #39ff14;
+  --ghun-color-light: #00891c;
+
+  --ghun-color: var(--ghun-color-dark);
+  /* Sharpens a bright color against mid-tone backdrops; invisible on dark. */
+  --ghun-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* System preference, which also covers GitHub's data-color-mode="auto". */
+@media (prefers-color-scheme: light) {
+  :root {
+    --ghun-color: var(--ghun-color-light);
+    --ghun-shadow: none;
+  }
+}
+
+/*
+ * GitHub's explicit theme choice overrides the system preference. These carry
+ * higher specificity than the media query above, so whichever one matches wins.
+ */
+html[data-color-mode='light'] {
+  --ghun-color: var(--ghun-color-light);
+  --ghun-shadow: none;
+}
+
+html[data-color-mode='dark'] {
+  --ghun-color: var(--ghun-color-dark);
+  --ghun-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/*
  * Styling for a replaced username.
  *
  * `!important` is deliberate: GitHub sets link colors with high specificity,
  * and these spans usually live inside an <a>.
- *
- * The color is theme-aware because neon #39ff14 measures 1.36:1 against
- * GitHub's white background — unreadable — while scoring 13.96:1 on the dark
- * theme. Light mode drops to a deep green at 4.57:1, which clears WCAG AA and
- * still reads unmistakably as "this was rewritten".
  */
 .ghun-name {
-  color: #39ff14 !important;
+  color: var(--ghun-color) !important;
   text-decoration: underline dotted !important;
   text-decoration-color: currentColor !important;
   text-decoration-thickness: 1px !important;
   text-underline-offset: 2px;
-
-  /* Sharpens the neon against mid-tone backdrops; invisible on dark. */
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+  text-shadow: var(--ghun-shadow);
 
   /* Inherit everything else so layout and weight never shift. */
   font: inherit;
@@ -28,28 +67,6 @@
 
 .ghun-name:hover {
   text-decoration-style: solid !important;
-}
-
-/* System preference, which also covers GitHub's data-color-mode="auto". */
-@media (prefers-color-scheme: light) {
-  .ghun-name {
-    color: #00891c !important;
-    text-shadow: none;
-  }
-}
-
-/*
- * GitHub's explicit theme choice overrides the system preference. These carry
- * higher specificity than the media query above, so whichever one matches wins.
- */
-html[data-color-mode='light'] .ghun-name {
-  color: #00891c !important;
-  text-shadow: none;
-}
-
-html[data-color-mode='dark'] .ghun-name {
-  color: #39ff14 !important;
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 /* ---------------------------------------------------------------------------
@@ -117,7 +134,7 @@ html[data-color-mode='dark'] .ghun-name {
 }
 
 #ghun-panel .ghun-panel-input:focus {
-  border-color: #39ff14;
+  border-color: var(--ghun-color);
   outline: none;
 }
 
@@ -139,26 +156,12 @@ html[data-color-mode='dark'] .ghun-name {
   cursor: pointer;
 }
 
-/* Same theme cascade as .ghun-name: neon by default, readable green on light. */
+/* --ghun-color already carries whichever variant the active theme calls for. */
 #ghun-panel .ghun-panel-save {
-  border-color: rgba(57, 255, 20, 0.45);
-  background: rgba(57, 255, 20, 0.14);
-  color: #39ff14;
+  border-color: color-mix(in srgb, var(--ghun-color) 45%, transparent);
+  background: color-mix(in srgb, var(--ghun-color) 14%, transparent);
+  color: var(--ghun-color);
   font-weight: 600;
-}
-
-@media (prefers-color-scheme: light) {
-  #ghun-panel .ghun-panel-save {
-    color: #00891c;
-  }
-}
-
-html[data-color-mode='light'] #ghun-panel .ghun-panel-save {
-  color: #00891c;
-}
-
-html[data-color-mode='dark'] #ghun-panel .ghun-panel-save {
-  color: #39ff14;
 }
 
 #ghun-panel .ghun-panel-remove {

@@ -6,7 +6,8 @@ everywhere — PR lists, comments, replies, issues, reviewers, commits, blame,
 notifications, hovercards.
 
 Replaced names are shown in neon green with a dotted underline, so you always
-know what the extension touched. Profile links keep working exactly as before.
+know what the extension touched — pick a different color from the wheel in the
+popup if you'd rather. Profile links keep working exactly as before.
 
 ## Install
 
@@ -34,9 +35,17 @@ hovercard doubles as the edit surface.
 without deleting anything — handy when you need to read a page as it really is,
 or screenshot it for someone else.
 
-**Back up:** Export writes a JSON file; Import merges one back in. Mappings are
-also stored in `chrome.storage.sync`, so they follow your Chrome profile across
-machines on their own.
+**Change the color:** open **Highlight color** in the popup and pick from the
+wheel — angle is hue, distance from the centre is saturation, and the slider
+underneath sets lightness. You only pick once: the variant for the other theme
+is worked out for you, so a color chosen on the dark theme won't vanish against
+white. See [Highlight color](#highlight-color) for what that costs you and what
+it doesn't.
+
+**Back up:** Export writes a JSON file carrying your mappings and your color
+choice; Import merges one back in. Both are also stored in
+`chrome.storage.sync`, so they follow your Chrome profile across machines on
+their own.
 
 ## What it deliberately does not touch
 
@@ -81,19 +90,49 @@ async-loaded content like hovercards and lazy comment threads.
 
 ### Highlight color
 
-Neon `#39ff14` measures **13.96:1** against GitHub's dark theme and **1.36:1**
-against its light theme — unreadable, where 4.5:1 is the accessibility floor.
-So light mode uses `#00891c` (4.57:1), which still reads unmistakably as
-"this was rewritten". Both are set in `src/content.css`; change them there if
-you want pure neon in both themes.
+One color can't serve both themes. Neon `#39ff14` measures **13.96:1** against
+GitHub's dark theme and **1.36:1** against its light theme — unreadable, where
+4.5:1 is the accessibility floor. So light mode uses `#00891c` (4.57:1), which
+still reads unmistakably as "this was rewritten".
+
+Custom colors work the same way, except the pair is computed. You pick one color
+and it is taken at face value for the theme you're in — it's a deliberate
+choice, and you're looking straight at the result. Only the counterpart is
+derived: `deriveThemeColors` in `src/common.js` holds hue and saturation fixed
+and moves lightness until the color clears the floor against the other theme's
+background, so the two variants stay recognisably the same color.
+
+The two directions aren't tuned the same, because the headroom isn't. Against
+GitHub's near-black canvas almost anything clears 4.5:1, so aiming at the floor
+would produce a variant barely brighter than what you picked — the derived dark
+variant aims at 7:1 instead, stopping early if reaching it would bleach the hue
+(red and purple turn pink and lavender long before green does). Against white
+there's much less room, and the hand-picked `#00891c` sits at 4.57:1, so the
+floor is the right aim there. As a check on the maths: deriving a light variant
+from the shipped neon lands on `#168900`, within a hair of the `#00891c` that
+was chosen by eye.
+
+Your pick itself is never overridden, even if it's unreadable — the popup shows
+both variants on their real backgrounds with live contrast ratios, and warns
+when the color you chose falls below 4.5:1, rather than quietly moving it.
+
+Which variant applies is decided entirely in CSS. `src/content.js` publishes
+both as `--ghun-color-dark` and `--ghun-color-light` on `<html>`, and
+`src/content.css` resolves them to a single `--ghun-color` through the same
+cascade GitHub's own theming uses — explicit `data-color-mode` first, then
+`prefers-color-scheme` for `auto`. Nothing in JavaScript has to know what theme
+you're on, or notice when you switch.
+
+Only the pick is stored — `{base, theme}` — never the derived pair, so retuning
+the derivation reaches colors that were already saved.
 
 ## Layout
 
 ```
 manifest.json          MV3 manifest
-src/common.js          shared helpers — matcher, validation, import parsing
+src/common.js          shared helpers — matcher, validation, import parsing, color maths
 src/content.js         the text-walking engine
-src/content.css        the neon styling and injected UI
+src/content.css        the highlight styling and injected UI
 src/hovercard.js       the "Show as a real name…" row and its editor panel
 src/popup.*            the management UI
 test/                  node:test + jsdom
