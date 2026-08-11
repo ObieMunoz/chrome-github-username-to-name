@@ -30,10 +30,6 @@ type the name, press Enter. The page repaints everywhere at once.
 Once mapped, that row reads **Showing as "…"** and offers Remove, so the
 hovercard doubles as the edit surface.
 
-**Or right-click:** anywhere on GitHub, choose **Replace this GitHub
-username…**. Right-clicking a profile link or a selected username prefills it;
-elsewhere the popup just opens ready for input.
-
 **Pause everything:** the switch in the popup header turns all replacement off
 without deleting anything — handy when you need to read a page as it really is,
 or screenshot it for someone else.
@@ -99,7 +95,6 @@ src/common.js          shared helpers — matcher, validation, import parsing
 src/content.js         the text-walking engine
 src/content.css        the neon styling and injected UI
 src/hovercard.js       the "Show as a real name…" row and its editor panel
-src/background.js      the right-click menu
 src/popup.*            the management UI
 test/                  node:test + jsdom
 demo/                  offline stand-in page for checking styling and skip rules

@@ -9,7 +9,6 @@
 
   const {
     STORAGE_KEY,
-    PENDING_KEY,
     normalizeUsername,
     isValidUsername,
     coerceSettings,
@@ -238,21 +237,6 @@
     }
   }
 
-  /** Pick up a username handed over by the context menu. */
-  async function consumePending() {
-    const result = await chrome.storage.local.get(PENDING_KEY);
-    const username = result[PENDING_KEY];
-    if (!username) return;
-
-    await chrome.storage.local.remove(PENDING_KEY);
-    el.username.value = username;
-
-    const existing = settings.mappings[normalizeUsername(username)];
-    if (existing) el.replacement.value = existing;
-    el.replacement.focus();
-    el.replacement.select();
-  }
-
   // --- wiring ----------------------------------------------------------------
 
   async function init() {
@@ -266,7 +250,7 @@
     el.importBtn.addEventListener('click', () => el.importFile.click());
     el.importFile.addEventListener('change', importMappings);
 
-    await consumePending();
+    el.username.focus();
   }
 
   init();

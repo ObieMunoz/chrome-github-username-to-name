@@ -11,9 +11,6 @@
   /** Single storage key holding the whole settings object. */
   const STORAGE_KEY = 'ghun';
 
-  /** chrome.storage.local key used to hand a username from the context menu to the popup. */
-  const PENDING_KEY = 'ghunPendingUsername';
-
   const DEFAULT_SETTINGS = {
     enabled: true,
     /** lowercased username -> replacement text */
@@ -225,7 +222,6 @@
 
   root.GHUN = {
     STORAGE_KEY,
-    PENDING_KEY,
     DEFAULT_SETTINGS,
     RESERVED_PATHS,
     normalizeUsername,
