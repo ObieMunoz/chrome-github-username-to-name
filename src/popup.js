@@ -9,7 +9,7 @@
 
   const {
     STORAGE_KEY,
-    DEFAULT_COLORS,
+    DEFAULT_COLOR,
     THEME_BACKGROUNDS,
     MIN_CONTRAST,
     normalizeUsername,
@@ -21,7 +21,7 @@
     rgbToHsl,
     hslToRgb,
     contrastRatio,
-    deriveThemeColors,
+    fitToBackground,
   } = globalThis.GHUN;
 
   const el = {
@@ -38,9 +38,8 @@
     swatch: document.getElementById('color-swatch'),
     wheel: document.getElementById('wheel'),
     marker: document.getElementById('wheel-marker'),
-    lightness: document.getElementById('lightness'),
     hex: document.getElementById('hex'),
-    chips: [document.getElementById('chip-dark'), document.getElementById('chip-light')],
+    swatches: [document.getElementById('chip-dark'), document.getElementById('chip-light')],
     note: document.getElementById('color-note'),
     colorReset: document.getElementById('color-reset'),
     exportBtn: document.getElementById('export'),
@@ -172,20 +171,34 @@
   /** CSS pixel size of the wheel; the canvas itself is scaled for the display. */
   const WHEEL_SIZE = 124;
 
+  /**
+   * Lightness the wheel is painted at, and the one a click on it produces.
+   *
+   * Fixing the two to the same value is what makes the wheel honest: the pixel
+   * under the cursor is exactly the color that gets stored. 0.5 is where hues
+   * are at their most saturated, so the wheel also reads clearly as a wheel.
+   * A specific shade outside that band is what the hex field is for, and typing
+   * one repaints the wheel at that lightness so the two never disagree.
+   */
+  const WHEEL_LIGHTNESS = 0.5;
+
   /** GitHub's own muted and danger foregrounds, one pair per preview backdrop. */
-  const CHIP_TEXT = {
+  const SWATCH_TEXT = {
     dark: { muted: '#8b949e', danger: '#f85149' },
     light: { muted: '#57606a', danger: '#cf222e' },
   };
+
+  /** Stand-in shown in the previews. Deliberately not one of the saved names. */
+  const SAMPLE_NAME = 'Real Name';
 
   /**
    * The live pick, kept in HSL rather than as a hex string: the wheel maps angle
    * to hue and radius to saturation, and round-tripping through hex would lose
    * both whenever the color passes through black, white or grey.
    */
-  let picker = { h: 0, s: 0, l: 0.5, theme: 'dark' };
+  let picker = { h: 0, s: 0, l: WHEEL_LIGHTNESS };
 
-  /** Lightness the wheel was last painted at, so drags don't repaint needlessly. */
+  /** Lightness the wheel was last painted at, so it only repaints when it must. */
   let paintedLightness = null;
   let colorSaveTimer = null;
 
@@ -193,36 +206,19 @@
     return toHex(hslToRgb(picker));
   }
 
-  /**
-   * Which theme the pick applies to.
-   *
-   * GitHub follows the OS setting unless it has been overridden in GitHub's own
-   * appearance settings, so this is the best guess available from inside the
-   * popup — and the preview chips are clickable, so a wrong guess costs a click.
-   */
-  function detectTheme() {
-    return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  }
-
-  function setPicker(hex, theme) {
+  function setPicker(hex) {
     const rgb = parseHex(hex);
     if (!rgb) return;
 
     const hsl = rgbToHsl(rgb);
-    picker = {
-      // A grey reports hue 0; keeping the old one leaves the wheel where it was
-      // instead of snapping the marker onto the red axis.
-      h: hsl.s === 0 ? picker.h : hsl.h,
-      s: hsl.s,
-      l: hsl.l,
-      theme: theme || picker.theme,
-    };
+    // A grey reports hue 0; keeping the old one leaves the wheel where it was
+    // instead of snapping the marker onto the red axis.
+    picker = { h: hsl.s === 0 ? picker.h : hsl.h, s: hsl.s, l: hsl.l };
   }
 
-  /** Start from the stored pick, or from the default for the detected theme. */
+  /** Start from the stored pick, or from the default the wheel opens on. */
   function initPicker() {
-    const theme = settings.color ? settings.color.theme : detectTheme();
-    setPicker(settings.color ? settings.color.base : DEFAULT_COLORS[theme], theme);
+    setPicker(settings.color || DEFAULT_COLOR);
   }
 
   function sizeWheel() {
@@ -235,10 +231,12 @@
 
   /**
    * Paint the wheel one pixel at a time in the same HSL the rest of the color
-   * maths uses, so the point under the cursor is exactly the value stored — a
-   * CSS gradient approximation would drift from it.
+   * maths uses, so the hue and saturation under the cursor are exactly the ones
+   * picked — a CSS gradient approximation would drift from them.
+   *
+   * Painted once, since nothing about it changes as you pick.
    */
-  function drawWheel(lightness) {
+  function drawWheel() {
     const context = el.wheel.getContext('2d');
     const size = el.wheel.width;
     const radius = size / 2;
@@ -256,7 +254,7 @@
           // Negative y because canvas counts downward and hue runs anticlockwise.
           h: (Math.atan2(-dy, dx) * 180) / Math.PI,
           s: Math.min(1, distance / radius),
-          l: lightness,
+          l: WHEEL_LIGHTNESS,
         });
 
         const index = (y * size + x) * 4;
@@ -269,7 +267,6 @@
     }
 
     context.putImageData(image, 0, 0);
-    paintedLightness = lightness;
   }
 
   function positionMarker() {
@@ -280,62 +277,47 @@
     el.marker.style.background = currentHex();
   }
 
-  function renderChip(chip, color) {
-    const theme = chip.dataset.theme;
+  /**
+   * Preview the chosen color on one of GitHub's two backgrounds.
+   *
+   * Both are shown because the same color is used on both themes, so which one
+   * you get depends on how GitHub is set at the time. The ratio turns red below
+   * the readability floor — that is information, not a veto; the color is
+   * whatever was asked for.
+   */
+  function renderSwatch(swatch) {
+    const theme = swatch.dataset.theme;
+    const color = currentHex();
     const ratio = contrastRatio(color, THEME_BACKGROUNDS[theme]);
-    const selected = picker.theme === theme;
 
-    chip.classList.toggle('selected', selected);
-    chip.setAttribute('aria-pressed', String(selected));
-    chip.style.background = THEME_BACKGROUNDS[theme];
-    chip.title = selected
-      ? `${color} — picked for the ${theme} theme`
-      : `${color} — derived for the ${theme} theme. Click to edit this one instead.`;
+    swatch.style.background = THEME_BACKGROUNDS[theme];
+    swatch.title = `${color} on GitHub's ${theme} theme — ${ratio.toFixed(2)}:1`;
 
-    const sample = chip.querySelector('.chip-sample');
-    sample.textContent = sampleName();
+    const sample = swatch.querySelector('.chip-sample');
+    sample.textContent = SAMPLE_NAME;
     sample.style.color = color;
 
-    const meta = chip.querySelector('.chip-meta');
+    const meta = swatch.querySelector('.chip-meta');
     meta.textContent = `${ratio.toFixed(1)}:1`;
-    meta.style.color = CHIP_TEXT[theme][ratio < MIN_CONTRAST ? 'danger' : 'muted'];
-  }
-
-  /** A real mapping makes the preview concrete; otherwise a stand-in. */
-  function sampleName() {
-    const first = sortedEntries()[0];
-    return first ? first[1] : 'Real Name';
+    meta.style.color = SWATCH_TEXT[theme][ratio < MIN_CONTRAST ? 'danger' : 'muted'];
   }
 
   function renderColor() {
-    const base = currentHex();
-    const colors = deriveThemeColors(base, picker.theme);
-    const other = picker.theme === 'dark' ? 'light' : 'dark';
+    const color = currentHex();
 
-    if (picker.l !== paintedLightness) drawWheel(picker.l);
+    if (picker.l !== paintedLightness) drawWheel();
     positionMarker();
 
-    el.lightness.value = String(Math.round(picker.l * 100));
-    el.lightness.style.setProperty(
-      '--track-color',
-      toHex(hslToRgb({ h: picker.h, s: picker.s, l: 0.5 }))
-    );
-
     // Leave the field alone mid-typing, or the caret jumps on every keystroke.
-    if (document.activeElement !== el.hex) el.hex.value = base;
+    if (document.activeElement !== el.hex) el.hex.value = color;
 
-    for (const chip of el.chips) renderChip(chip, colors[chip.dataset.theme]);
+    for (const swatch of el.swatches) renderSwatch(swatch);
 
-    const ratio = contrastRatio(base, THEME_BACKGROUNDS[picker.theme]);
-    const readable = ratio >= MIN_CONTRAST;
-    el.note.classList.toggle('warn', !readable);
-    el.note.textContent = readable
-      ? `Picked for the ${picker.theme} theme. The ${other} variant is derived to stay readable.`
-      : `${ratio.toFixed(1)}:1 on the ${picker.theme} theme is below the ${MIN_CONTRAST}:1 readability floor.`;
+    el.note.textContent =
+      'Used on both GitHub themes. The two swatches show it on each.';
 
-    // The popup is always dark, so its own accent follows the dark variant.
-    document.documentElement.style.setProperty('--neon', colors.dark);
-    el.swatch.style.background = colors.dark;
+    document.documentElement.style.setProperty('--neon', color);
+    el.swatch.style.background = color;
     el.colorReset.hidden = !settings.color;
   }
 
@@ -346,7 +328,7 @@
    * agreeing with the wheel between one write and the next.
    */
   function commitColor() {
-    settings.color = { base: currentHex(), theme: picker.theme };
+    settings.color = currentHex();
     renderColor();
 
     clearTimeout(colorSaveTimer);
@@ -362,6 +344,9 @@
 
     picker.h = (((Math.atan2(-dy, dx) * 180) / Math.PI) + 360) % 360;
     picker.s = Math.min(1, Math.sqrt(dx * dx + dy * dy) / radius);
+    // The wheel is painted at one lightness, so a click has to land on it too,
+    // or the color stored would not be the pixel that was clicked.
+    picker.l = WHEEL_LIGHTNESS;
     commitColor();
   }
 
@@ -371,17 +356,6 @@
     ArrowUp: { s: 0.04 },
     ArrowDown: { s: -0.04 },
   };
-
-  /**
-   * Hand the wheel to the variant the chip represents. Its current color becomes
-   * the new pick, so nothing moves at the moment of the click — only which side
-   * is authoritative and which one gets derived from now on.
-   */
-  function chooseTheme(theme) {
-    if (picker.theme === theme) return;
-    setPicker(deriveThemeColors(currentHex(), picker.theme)[theme], theme);
-    commitColor();
-  }
 
   async function resetColor() {
     clearTimeout(colorSaveTimer);
@@ -396,6 +370,7 @@
 
   function wireColorPicker() {
     sizeWheel();
+    drawWheel();
 
     el.wheel.addEventListener('pointerdown', (event) => {
       pickFromPointer(event);
@@ -418,11 +393,7 @@
       const scale = event.shiftKey ? 4 : 1;
       if (delta.h) picker.h = (picker.h + delta.h * scale + 360) % 360;
       if (delta.s) picker.s = Math.min(1, Math.max(0, picker.s + delta.s * scale));
-      commitColor();
-    });
-
-    el.lightness.addEventListener('input', () => {
-      picker.l = Number(el.lightness.value) / 100;
+      picker.l = WHEEL_LIGHTNESS;
       commitColor();
     });
 
@@ -434,10 +405,6 @@
     el.hex.addEventListener('blur', () => {
       el.hex.value = currentHex();
     });
-
-    for (const chip of el.chips) {
-      chip.addEventListener('click', () => chooseTheme(chip.dataset.theme));
-    }
 
     el.colorReset.addEventListener('click', resetColor);
   }

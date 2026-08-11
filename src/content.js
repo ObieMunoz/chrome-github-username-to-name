@@ -15,7 +15,6 @@
     looksLikeUrl,
     isRepoRootPath,
     coerceSettings,
-    resolveColors,
   } = globalThis.GHUN;
 
   const CLASS = 'ghun-name';
@@ -257,25 +256,24 @@
   // --- settings --------------------------------------------------------------
 
   /**
-   * Publish both variants of the highlight color and let content.css pick one.
+   * Publish the chosen highlight color, which is used on both GitHub themes.
    *
-   * Deciding here which variant applies would mean tracking GitHub's theme
-   * toggle, the `auto` mode, and the OS preference behind it; handing CSS the
-   * pair instead leaves that to the cascade already written in the stylesheet.
+   * Clearing it rather than writing a default back is what lets content.css keep
+   * owning the shipped default: its own cascade still swaps neon for a readable
+   * green on the light theme, and an inline value here simply outranks it.
    */
-  function applyColors() {
+  function applyColor() {
     const root = document.documentElement;
     if (!root) return;
 
-    const colors = resolveColors(settings.color);
-    root.style.setProperty('--ghun-color-dark', colors.dark);
-    root.style.setProperty('--ghun-color-light', colors.light);
+    if (settings.color) root.style.setProperty('--ghun-color', settings.color);
+    else root.style.removeProperty('--ghun-color');
   }
 
   function applySettings(stored, { rescan = true } = {}) {
     settings = coerceSettings(stored);
     matcher = buildMatcher(settings.mappings);
-    applyColors();
+    applyColor();
     if (!rescan) return;
 
     restoreAll();

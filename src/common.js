@@ -15,14 +15,17 @@
     enabled: true,
     /** lowercased username -> replacement text */
     mappings: {},
-    /** {base, theme} once the user picks a color, null while on the default. */
+    /** `#rrggbb` once the user picks a color, null while on the default. */
     color: null,
   };
 
-  /** The shipped pair: neon green on the dark theme, a deep green on the light one. */
-  const DEFAULT_COLORS = { dark: '#39ff14', light: '#00891c' };
+  /**
+   * What the wheel opens on before anything has been picked. content.css owns
+   * the actual shipped default, which stays theme-aware; this is only the seed.
+   */
+  const DEFAULT_COLOR = '#39ff14';
 
-  /** What each variant has to stay readable against — GitHub's page background. */
+  /** GitHub's page backgrounds, which the popup previews a color against. */
   const THEME_BACKGROUNDS = { dark: '#0d1117', light: '#ffffff' };
 
   /** WCAG AA for normal-size text. */
@@ -276,107 +279,21 @@
     return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
   }
 
-  /** Lightness increments tried when re-lighting a color; 1/200 is finer than 8-bit. */
-  const FIT_STEPS = 200;
-
   /**
-   * How hard to push a derived variant, per theme.
+   * The stored form is just the hex the user picked, or null while on the
+   * shipped default.
    *
-   * The two are deliberately not symmetric, because the headroom isn't. Almost
-   * anything clears AA against GitHub's near-black canvas, so aiming at the
-   * floor there produces a variant barely brighter than the color picked — the
-   * shipped neon sits at 13.96:1, and a derived green landing at 4.6:1 would
-   * look washed out beside it. Against white there is much less room, and the
-   * hand-picked light default sits at 4.57:1, so the floor is the right aim.
+   * One color, used on whichever theme GitHub happens to be showing. Deriving a
+   * second variant per theme was tried and removed: it made a single pick into
+   * two colors the user could not see at once, and the refit that produced the
+   * second one is not reversible, so the machinery could quietly walk a chosen
+   * color somewhere else. Anyone who switches theme and dislikes the result can
+   * pick again, which is one click.
    *
-   * `stopLightness` is what keeps the higher dark-theme target from bleaching
-   * the hues that would need a near-white lightness to reach it: red and purple
-   * turn pink and lavender well before green does. Past that point the search
-   * settles for whatever it has, as long as it is still readable.
-   */
-  const THEME_FIT = {
-    dark: { target: 7, stopLightness: 0.72 },
-    light: { target: MIN_CONTRAST, stopLightness: 0 },
-  };
-
-  /**
-   * Re-light a color until it reads clearly against `background`.
-   *
-   * Hue and saturation are held fixed and only lightness moves, so the result
-   * still reads as the same color rather than a different one. The search walks
-   * away from the backdrop — brighter on a dark background, darker on a light
-   * one — and stops as early as it can, which keeps the result as close to the
-   * original as readability allows.
-   */
-  function fitToBackground(hex, background, { target = MIN_CONTRAST, stopLightness = null } = {}) {
-    const rgb = parseHex(hex);
-    const bg = parseHex(background);
-    if (!rgb || !bg) return normalizeHex(hex) || DEFAULT_COLORS.dark;
-
-    const hsl = rgbToHsl(rgb);
-    const direction = relativeLuminance(bg) < 0.5 ? 1 : -1;
-    const passedStop = (l) =>
-      stopLightness !== null && (direction > 0 ? l >= stopLightness : l <= stopLightness);
-
-    for (let step = 0; step <= FIT_STEPS; step += 1) {
-      const l = Math.min(1, Math.max(0, hsl.l + (direction * step) / FIT_STEPS));
-      const candidate = toHex(hslToRgb({ h: hsl.h, s: hsl.s, l }));
-      const ratio = contrastRatio(candidate, background);
-
-      if (ratio >= target) return candidate;
-      // Readability is the hard requirement; the target is only an ambition, so
-      // give it up rather than push the color past the point of washing out.
-      if (ratio >= MIN_CONTRAST && passedStop(l)) return candidate;
-    }
-
-    // Unreachable in practice: white clears 4.5:1 on any background dark enough
-    // to search upward from, and black clears it on any light one.
-    return direction > 0 ? '#ffffff' : '#000000';
-  }
-
-  /**
-   * Expand a single picked color into the pair the stylesheet needs.
-   *
-   * The pick is taken at face value for the theme it was made in — it is a
-   * deliberate choice, and the user is looking straight at the result. Only the
-   * other variant is computed, which is what stops a color chosen on the dark
-   * theme from disappearing against white.
-   *
-   * @param {string} hex
-   * @param {'dark'|'light'} theme the theme the pick was made in.
-   * @returns {{dark: string, light: string}}
-   */
-  function deriveThemeColors(hex, theme) {
-    const base = normalizeHex(hex);
-    if (!base) return { ...DEFAULT_COLORS };
-
-    const picked = theme === 'light' ? 'light' : 'dark';
-    const derived = picked === 'light' ? 'dark' : 'light';
-
-    return {
-      [picked]: base,
-      [derived]: fitToBackground(base, THEME_BACKGROUNDS[derived], THEME_FIT[derived]),
-    };
-  }
-
-  /**
-   * Stored form is the pick plus the theme it was made in, never the derived
-   * pair — so a later change to the derivation reaches colors already saved.
-   *
-   * @returns {{base: string, theme: 'dark'|'light'}|null} null means "default".
+   * @returns {string|null} a canonical `#rrggbb`, or null meaning "the default".
    */
   function coerceColor(value) {
-    if (!value || typeof value !== 'object') return null;
-
-    const base = normalizeHex(value.base);
-    if (!base) return null;
-
-    return { base, theme: value.theme === 'light' ? 'light' : 'dark' };
-  }
-
-  /** @returns {{dark: string, light: string}} the pair to hand to CSS. */
-  function resolveColors(color) {
-    return color ? deriveThemeColors(color.base, color.theme) : { ...DEFAULT_COLORS };
+    return typeof value === 'string' ? normalizeHex(value) : null;
   }
 
   /** Merge stored settings over the defaults, discarding malformed values. */
@@ -443,7 +360,7 @@
   root.GHUN = {
     STORAGE_KEY,
     DEFAULT_SETTINGS,
-    DEFAULT_COLORS,
+    DEFAULT_COLOR,
     THEME_BACKGROUNDS,
     MIN_CONTRAST,
     RESERVED_PATHS,
@@ -461,10 +378,7 @@
     rgbToHsl,
     hslToRgb,
     contrastRatio,
-    fitToBackground,
-    deriveThemeColors,
     coerceColor,
-    resolveColors,
     coerceSettings,
     parseImport,
   };
