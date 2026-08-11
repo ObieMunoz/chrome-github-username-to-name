@@ -170,8 +170,8 @@ test('coerceSettings drops malformed entries and defaults enabled to true', () =
 });
 
 test('coerceSettings survives junk input', () => {
-  assert.deepEqual(coerceSettings(undefined), { enabled: true, mappings: {} });
-  assert.deepEqual(coerceSettings('nope'), { enabled: true, mappings: {} });
+  assert.deepEqual(coerceSettings(undefined), { enabled: true, mappings: {}, color: null });
+  assert.deepEqual(coerceSettings('nope'), { enabled: true, mappings: {}, color: null });
   assert.equal(coerceSettings({ enabled: false }).enabled, false);
 });
 

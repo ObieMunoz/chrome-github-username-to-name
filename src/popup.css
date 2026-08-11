@@ -1,4 +1,9 @@
 :root {
+  /*
+   * The popup's accent. Overwritten inline by popup.js with the dark variant of
+   * the user's pick — the popup is always dark, so that is the one that belongs
+   * here regardless of which theme the pick was made in.
+   */
   --neon: #39ff14;
   --bg: #0d1117;
   --bg-raised: #161b22;
@@ -79,7 +84,7 @@ h1 {
 }
 
 .switch input:checked + .track {
-  background: rgba(57, 255, 20, 0.25);
+  background: color-mix(in srgb, var(--neon) 25%, transparent);
 }
 
 .switch input:checked + .track .thumb {
@@ -151,14 +156,14 @@ button:hover {
 }
 
 button.primary {
-  border-color: rgba(57, 255, 20, 0.4);
-  background: rgba(57, 255, 20, 0.14);
+  border-color: color-mix(in srgb, var(--neon) 40%, transparent);
+  background: color-mix(in srgb, var(--neon) 14%, transparent);
   color: var(--neon);
   font-weight: 600;
 }
 
 button.primary:hover {
-  background: rgba(57, 255, 20, 0.24);
+  background: color-mix(in srgb, var(--neon) 24%, transparent);
 }
 
 /* --- status --------------------------------------------------------------- */
@@ -168,7 +173,7 @@ button.primary:hover {
   padding: 7px 9px;
   border-radius: 6px;
   font-size: 12px;
-  background: rgba(57, 255, 20, 0.1);
+  background: color-mix(in srgb, var(--neon) 10%, transparent);
   color: var(--neon);
 }
 
@@ -240,6 +245,187 @@ button.primary:hover {
 .empty strong {
   color: var(--text);
   font-weight: 500;
+}
+
+/* --- color picker --------------------------------------------------------- */
+
+.color {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.color-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.color-summary:hover {
+  color: var(--text);
+}
+
+.color-summary:focus-visible {
+  outline: 2px solid var(--neon);
+  outline-offset: 2px;
+}
+
+.color-swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 3px;
+  background: var(--neon);
+}
+
+.color-body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.wheel-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 124px;
+}
+
+.wheel-stage {
+  position: relative;
+  width: 124px;
+  height: 124px;
+}
+
+.wheel {
+  display: block;
+  border-radius: 50%;
+  cursor: crosshair;
+  /* Sits under the marker, which is a sibling rather than a canvas repaint. */
+  touch-action: none;
+}
+
+.wheel:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 3px;
+}
+
+.wheel-marker {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.lightness {
+  width: 100%;
+  height: 12px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  /* --track-color is set by popup.js to the picked hue at full lightness. */
+  background: linear-gradient(to right, #000, var(--track-color, #39ff14), #fff);
+  appearance: none;
+  cursor: pointer;
+}
+
+.lightness::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  appearance: none;
+}
+
+.lightness:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.color-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-transform: lowercase;
+}
+
+/*
+ * A preview of one variant on the background it will actually appear against.
+ * Clicking one makes it the variant the wheel edits, so a wrong guess about
+ * which theme the user is in costs a single click.
+ */
+.chip {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: left;
+  overflow: hidden;
+}
+
+.chip:hover {
+  border-color: #8b949e;
+}
+
+.chip.selected {
+  border-color: var(--neon);
+  box-shadow: inset 0 0 0 1px var(--neon);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.chip-sample {
+  overflow: hidden;
+  font-size: 12px;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-meta {
+  flex: none;
+  font-size: 10px;
+}
+
+.color-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.color-note.warn {
+  color: var(--danger);
+}
+
+.color-reset {
+  width: 100%;
+  margin-top: 10px;
+  font-size: 12px;
 }
 
 /* --- footer --------------------------------------------------------------- */
