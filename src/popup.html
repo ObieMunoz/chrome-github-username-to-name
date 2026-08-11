@@ -49,39 +49,28 @@
       </summary>
 
       <div class="color-body">
-        <div class="wheel-column">
-          <div class="wheel-stage">
-            <canvas
-              id="wheel"
-              class="wheel"
-              tabindex="0"
-              role="application"
-              aria-label="Color wheel. Left and right arrows change hue, up and down change saturation."
-            ></canvas>
-            <span class="wheel-marker" id="wheel-marker" aria-hidden="true"></span>
-          </div>
-          <input
-            type="range"
-            id="lightness"
-            class="lightness"
-            min="0"
-            max="100"
-            step="1"
-            aria-label="Lightness"
-          />
+        <div class="wheel-stage">
+          <canvas
+            id="wheel"
+            class="wheel"
+            tabindex="0"
+            role="application"
+            aria-label="Color wheel. Left and right arrows change hue, up and down change saturation."
+          ></canvas>
+          <span class="wheel-marker" id="wheel-marker" aria-hidden="true"></span>
         </div>
 
         <div class="color-side">
           <input type="text" id="hex" class="hex" spellcheck="false" maxlength="7" aria-label="Hex color" />
 
-          <button type="button" class="chip" id="chip-dark" data-theme="dark">
+          <div class="chip" id="chip-dark" data-theme="dark">
             <span class="chip-sample"></span>
             <span class="chip-meta"></span>
-          </button>
-          <button type="button" class="chip" id="chip-light" data-theme="light">
+          </div>
+          <div class="chip" id="chip-light" data-theme="light">
             <span class="chip-sample"></span>
             <span class="chip-meta"></span>
-          </button>
+          </div>
 
           <p class="color-note" id="color-note"></p>
         </div>

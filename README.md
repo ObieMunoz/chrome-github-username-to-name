@@ -35,12 +35,12 @@ hovercard doubles as the edit surface.
 without deleting anything — handy when you need to read a page as it really is,
 or screenshot it for someone else.
 
-**Change the color:** open **Highlight color** in the popup and pick from the
-wheel — angle is hue, distance from the centre is saturation, and the slider
-underneath sets lightness. You only pick once: the variant for the other theme
-is worked out for you, so a color chosen on the dark theme won't vanish against
-white. See [Highlight color](#highlight-color) for what that costs you and what
-it doesn't.
+**Change the color:** open **Highlight color** in the popup and click the wheel —
+angle is hue, distance from the centre is saturation. Whatever you pick is what
+you get, on both of GitHub's themes. The two swatches beside the wheel show it
+on each of them with a contrast ratio, so you can see before you commit whether
+it will still be readable if you switch. Type a hex for an exact shade, or
+**Reset** to go back to the default green.
 
 **Back up:** Export writes a JSON file carrying your mappings and your color
 choice; Import merges one back in. Both are also stored in
@@ -96,41 +96,38 @@ them, which are build hashes and change without notice.
 
 ### Highlight color
 
-One color can't serve both themes. Neon `#39ff14` measures **13.96:1** against
-GitHub's dark theme and **1.36:1** against its light theme — unreadable, where
-4.5:1 is the accessibility floor. So light mode uses `#00891c` (4.57:1), which
-still reads unmistakably as "this was rewritten".
+The default is theme-aware, because one color can't serve both themes. Neon
+`#39ff14` measures **13.96:1** against GitHub's dark theme and **1.36:1**
+against its light theme — unreadable, where 4.5:1 is the accessibility floor.
+So light mode falls back to `#00891c` (4.57:1), which still reads unmistakably
+as "this was rewritten". Both live in `src/content.css`, picked between by the
+same cascade GitHub's own theming uses: explicit `data-color-mode` first, then
+`prefers-color-scheme` for `auto`.
 
-Custom colors work the same way, except the pair is computed. You pick one color
-and it is taken at face value for the theme you're in — it's a deliberate
-choice, and you're looking straight at the result. Only the counterpart is
-derived: `deriveThemeColors` in `src/common.js` holds hue and saturation fixed
-and moves lightness until the color clears the floor against the other theme's
-background, so the two variants stay recognisably the same color.
+A color you pick yourself is one color, used on both themes. That is a
+deliberate trade. An earlier version derived a second variant per theme so a
+pick could never go unreadable, and it was worse in every way that mattered: it
+turned one choice into two colors you could not see at once, it had to guess
+which theme you were in and got that wrong for anyone who set the theme in
+GitHub's own settings rather than the OS, and the refit that produced the second
+variant is not reversible — so the machinery could walk a chosen color somewhere
+else and never walk it back. Switching themes is rare; picking a color again is
+one click. The guardrail is now information rather than control: the popup shows
+your color on both backgrounds with live contrast ratios, and reddens the ratio
+below 4.5:1 instead of overriding you.
 
-The two directions aren't tuned the same, because the headroom isn't. Against
-GitHub's near-black canvas almost anything clears 4.5:1, so aiming at the floor
-would produce a variant barely brighter than what you picked — the derived dark
-variant aims at 7:1 instead, stopping early if reaching it would bleach the hue
-(red and purple turn pink and lavender long before green does). Against white
-there's much less room, and the hand-picked `#00891c` sits at 4.57:1, so the
-floor is the right aim there. As a check on the maths: deriving a light variant
-from the shipped neon lands on `#168900`, within a hair of the `#00891c` that
-was chosen by eye.
+`src/content.js` publishes the pick as a single `--ghun-color` on `<html>`,
+which outranks the stylesheet and flattens the cascade above. Clearing it —
+rather than writing a default back — is what lets `content.css` keep owning the
+theme-aware default, so **Reset** restores that behavior exactly.
 
-Your pick itself is never overridden, even if it's unreadable — the popup shows
-both variants on their real backgrounds with live contrast ratios, and warns
-when the color you chose falls below 4.5:1, rather than quietly moving it.
+The wheel covers hue and saturation and is painted at a fixed lightness, and a
+click stores that same lightness, so the pixel under the cursor is exactly the
+color saved. Anything outside that band goes in the hex field, which repaints
+the wheel to match rather than letting the two disagree.
 
-Which variant applies is decided entirely in CSS. `src/content.js` publishes
-both as `--ghun-color-dark` and `--ghun-color-light` on `<html>`, and
-`src/content.css` resolves them to a single `--ghun-color` through the same
-cascade GitHub's own theming uses — explicit `data-color-mode` first, then
-`prefers-color-scheme` for `auto`. Nothing in JavaScript has to know what theme
-you're on, or notice when you switch.
-
-Only the pick is stored — `{base, theme}` — never the derived pair, so retuning
-the derivation reaches colors that were already saved.
+Only the hex is stored. Everything else — the two previews, the ratios — is
+recomputed from it.
 
 ## Layout
 

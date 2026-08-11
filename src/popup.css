@@ -289,14 +289,8 @@ button.primary:hover {
   margin-top: 12px;
 }
 
-.wheel-column {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 124px;
-}
-
 .wheel-stage {
+  flex: none;
   position: relative;
   width: 124px;
   height: 124px;
@@ -326,34 +320,6 @@ button.primary:hover {
   transform: translate(-50%, -50%);
 }
 
-.lightness {
-  width: 100%;
-  height: 12px;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  /* --track-color is set by popup.js to the picked hue at full lightness. */
-  background: linear-gradient(to right, #000, var(--track-color, #39ff14), #fff);
-  appearance: none;
-  cursor: pointer;
-}
-
-.lightness::-webkit-slider-thumb {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-  background: transparent;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
-  appearance: none;
-}
-
-.lightness:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
-
 .color-side {
   display: flex;
   flex-direction: column;
@@ -367,9 +333,9 @@ button.primary:hover {
 }
 
 /*
- * A preview of one variant on the background it will actually appear against.
- * Clicking one makes it the variant the wheel edits, so a wrong guess about
- * which theme the user is in costs a single click.
+ * The chosen color shown on each of GitHub's two page backgrounds. Read-only —
+ * the same color is used on both themes, so there is nothing here to choose
+ * between, only something to look at before you decide.
  */
 .chip {
   display: flex;
@@ -381,20 +347,6 @@ button.primary:hover {
   border-radius: 6px;
   text-align: left;
   overflow: hidden;
-}
-
-.chip:hover {
-  border-color: #8b949e;
-}
-
-.chip.selected {
-  border-color: var(--neon);
-  box-shadow: inset 0 0 0 1px var(--neon);
-}
-
-.chip:focus-visible {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
 }
 
 .chip-sample {
@@ -416,10 +368,6 @@ button.primary:hover {
   color: var(--muted);
   font-size: 10px;
   line-height: 1.4;
-}
-
-.color-note.warn {
-  color: var(--danger);
 }
 
 .color-reset {
