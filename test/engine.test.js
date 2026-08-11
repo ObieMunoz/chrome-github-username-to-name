@@ -61,6 +61,70 @@ test('never rewrites code or pre blocks', () => {
   assert.equal($(window, '#t').textContent, 'reviewed by Obie Munoz');
 });
 
+/**
+ * One source line as GitHub's file and blame views actually build it: a plain
+ * `div` per line, with no `code` or `pre` anywhere in the chain.
+ */
+function codeLine(text, lineNumber = 1) {
+  return (
+    '<div class="react-code-text react-code-line-contents"><div>' +
+    `<div id="LC${lineNumber}" class="react-file-line html-div" ` +
+    `data-testid="code-cell" data-line-number="${lineNumber}">${text}</div>` +
+    '</div></div>'
+  );
+}
+
+test('never rewrites the file view, which marks up no code element', () => {
+  // Viewing a file used to rewrite usernames in the source itself, because the
+  // CODE/PRE rule has nothing to fire on here.
+  const source = "const MAPPINGS = { u1069002: 'Obie Munoz' };";
+  const window = setup(
+    '<div class="react-code-file-contents"><div class="react-code-lines">' +
+      codeLine(source) +
+      '</div></div>'
+  );
+
+  assert.equal($(window, '#LC1').textContent, source);
+  assert.equal(replacedSpans(window).length, 0);
+});
+
+test('never rewrites the blame view, which drops the file-contents wrapper', () => {
+  // Blame nests the same line inside its own hashed wrappers, so the line's own
+  // classes — not the file-view container — have to be what stops the walk.
+  const source = 'Fork me? Fork you, @u1069002!';
+  const window = setup(`<div class="Blame-module__codeLine__fhKEj">${codeLine(source, 16)}</div>`);
+
+  assert.equal($(window, '#LC16').textContent, source);
+  assert.equal(replacedSpans(window).length, 0);
+});
+
+test('never rewrites code lines streamed in by the virtualized scroller', async () => {
+  // The file view only renders the lines near the viewport, so most of a file
+  // arrives through the observer rather than the first scan.
+  const chromeStub = () => ({
+    runtime: { id: 'test-extension', lastError: null },
+    storage: {
+      sync: { get: (key, cb) => cb({ [key]: { enabled: true, mappings: MAPPINGS } }) },
+      onChanged: { addListener() {} },
+    },
+  });
+
+  const window = setup(
+    '<div class="react-code-file-contents"><div id="lines" class="react-code-lines"></div></div>',
+    { chromeStub }
+  );
+
+  const source = 'git blame --author=u1069002';
+  const line = window.document.createElement('div');
+  line.innerHTML = codeLine(source, 42);
+  $(window, '#lines').appendChild(line);
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal($(window, '#LC42').textContent, source);
+  assert.equal(replacedSpans(window).length, 0);
+});
+
 test('never rewrites text that is a URL', () => {
   const window = setup('<p id="t">https://github.com/u1069002</p>');
   assert.equal($(window, '#t').textContent, 'https://github.com/u1069002');

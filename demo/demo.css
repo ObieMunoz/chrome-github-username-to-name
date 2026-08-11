@@ -130,7 +130,8 @@ a:hover {
   font-size: 12px;
 }
 
-pre {
+pre,
+.react-code-file-contents {
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -139,8 +140,17 @@ pre {
   overflow-x: auto;
 }
 
+/* Numbered like the real file view, so the demo reads as one. */
+.react-file-line::before {
+  content: attr(data-line-number);
+  display: inline-block;
+  width: 2em;
+  opacity: 0.5;
+}
+
 code,
 pre,
+.react-code-file-contents,
 .url,
 .email {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

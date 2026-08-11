@@ -56,6 +56,7 @@ real damage:
 | --- | --- |
 | `textarea`, `input`, `contenteditable`, `role="textbox"` | GitHub's comment box is a real editor. Rewriting it would change what you actually submit. |
 | `code`, `pre`, `kbd`, `samp` | A username in a code block is usually part of a command or path, where a silent rewrite hands you a broken copy-paste. |
+| The file and blame views | Same reason, but they need their own rule: GitHub renders each source line as a plain `div`, so there is no `code` element to match on. Diff views need nothing extra — they do use a real `code` per line. |
 | Text containing a URL | Rewriting `https://github.com/u1069002` would make the visible text disagree with where the link goes. |
 | Links to a repo's home page | A repo slug is an identifier, not a person. `ObieMunoz / obiemunoz.com` renders as `Obie Munoz / obiemunoz.com` — the owner is a person, the repo name is not. Only exactly-two-segment paths are skipped, so a PR title at `/owner/repo/pull/12` can still name someone. |
 | `href` attributes | Only text nodes are touched, so links keep pointing where GitHub put them. |
@@ -87,6 +88,11 @@ original text so toggling off restores the page losslessly.
 Coverage comes from observing DOM mutations rather than from a list of CSS
 selectors, so it survives GitHub reshuffling their markup and picks up
 async-loaded content like hovercards and lazy comment threads.
+
+The one place selectors are unavoidable is the code views, where nothing in the
+markup says "this is code". Those match on GitHub's unhashed class names
+(`react-file-line`, `react-code-text`) rather than the `*-module__*` ones beside
+them, which are build hashes and change without notice.
 
 ### Highlight color
 
