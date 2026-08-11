@@ -59,6 +59,7 @@ real damage:
 | The file and blame views | Same reason, but they need their own rule: GitHub renders each source line as a plain `div`, so there is no `code` element to match on. Diff views need nothing extra — they do use a real `code` per line. |
 | Text containing a URL | Rewriting `https://github.com/u1069002` would make the visible text disagree with where the link goes. |
 | Links to a repo's home page | A repo slug is an identifier, not a person. `ObieMunoz / obiemunoz.com` renders as `Obie Munoz / obiemunoz.com` — the owner is a person, the repo name is not. Only exactly-two-segment paths are skipped, so a PR title at `/owner/repo/pull/12` can still name someone. |
+| Links marked `rel="me"` | A profile's website, X, LinkedIn, Bluesky and Instagram rows. `@ObieMunoz` under the X icon is a handle on X, an identifier on a service this knows nothing about. GitHub puts `rel="me"` on those rows and nowhere else, and markdown can't set it, so a link in a profile README can't claim it. |
 | `href` attributes | Only text nodes are touched, so links keep pointing where GitHub put them. |
 | Avatar `alt` / `title` attributes | Left raw on purpose, so hovering always gets you back to the real username. |
 
@@ -75,6 +76,14 @@ Email addresses are left verbatim on both sides of the `@`, because a rewritten
 address is no longer the address. That covers the merge screen's "This commit
 will be authored by `95655512+obiemunoz@users.noreply.github.com`", which is
 still an address even though your username is sitting in the middle of it.
+
+A `/` straight after a name means the same thing as one straight before it: this
+is the owner segment of a path, not a person. So the branch reference every
+merge commit carries in its subject — "Merge pull request #4 from
+`ObieMunoz/feature/rewrites-code-blocks`", shown on the repo home page and
+against every file it touched — stays exactly as written, as does a repo
+reference like `ObieMunoz/site#12`. A breadcrumb spaces its slash out
+(`ObieMunoz / obiemunoz.com`), so the owner there is still read as a person.
 
 ## How it works
 

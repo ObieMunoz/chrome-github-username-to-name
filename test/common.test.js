@@ -96,6 +96,23 @@ test('does not match a path segment', () => {
   assert.deepEqual(matches(OBIE, 'see /u1069002 for details'), []);
 });
 
+test('does not match the owner of a branch or repo reference', () => {
+  // Every merge commit's subject, and the one the repo home page shows on each
+  // row: the ref is something you check out, and a rewritten one names nothing.
+  const mappings = { obiemunoz: 'Obie Munoz' };
+  assert.deepEqual(
+    matches(mappings, 'Merge pull request #4 from obiemunoz/feature/rewrites-code-blocks-4c0b83'),
+    []
+  );
+  assert.deepEqual(matches(mappings, 'forked from obiemunoz/obiemunoz.com'), []);
+  assert.deepEqual(matches(mappings, 'fixed in obiemunoz/site#12'), []);
+});
+
+test('still matches an owner in a breadcrumb, where the slash is spaced out', () => {
+  const mappings = { obiemunoz: 'Obie Munoz' };
+  assert.deepEqual(matches(mappings, 'obiemunoz / obiemunoz.com'), ['obiemunoz']);
+});
+
 test('handles hyphenated usernames on their boundaries', () => {
   const mappings = { 'some-user': 'Real Person' };
   assert.deepEqual(matches(mappings, 'some-user pushed'), ['some-user']);

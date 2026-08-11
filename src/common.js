@@ -90,6 +90,14 @@
    * with more characters after it means `obiemunoz.com`, which must not match,
    * while a dot at the end of a sentence ("thanks u1069002.") still does.
    *
+   * A trailing `/` is excluded for the same reason as the leading one: the name
+   * is the owner segment of a path, not a reference to a person. That is what
+   * every merge commit's subject carries — "Merge pull request #4 from
+   * ObieMunoz/feature/rewrites-code-blocks" — and a branch you can no longer
+   * check out is the same broken copy-paste a code block would have been. A
+   * breadcrumb spaces its slash out (`ObieMunoz / obiemunoz.com`), so the owner
+   * there still reads as a person.
+   *
    * @returns {RegExp|null} null when there is nothing to match.
    */
   function buildMatcher(mappings) {
@@ -102,7 +110,7 @@
     const alternation = names.map(escapeRegExp).join('|');
     return new RegExp(
       `(?<![A-Za-z0-9\\-@._/])(@?)(${alternation})` +
-        `(?![A-Za-z0-9\\-_])(?!\\.[A-Za-z0-9])${EMAIL_LOCAL_PART}`,
+        `(?![A-Za-z0-9\\-_/])(?!\\.[A-Za-z0-9])${EMAIL_LOCAL_PART}`,
       'gi'
     );
   }
