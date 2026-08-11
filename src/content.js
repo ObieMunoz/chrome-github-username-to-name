@@ -87,11 +87,31 @@
     return el.tagName === 'A' && isRepoRootPath(el.getAttribute('href') || '');
   }
 
+  /**
+   * A link to the same person's account somewhere else — the website, X,
+   * LinkedIn, Bluesky and Instagram rows in a profile's sidebar.
+   *
+   * What those rows show is that service's handle, and a handle is an
+   * identifier on a site this extension knows nothing about: `@ObieMunoz`
+   * under the X icon names an X account, and reading it as a person's name
+   * makes the row disagree with where it points.
+   *
+   * `rel="me"` is the marker because GitHub puts it on every one of those rows
+   * and nowhere else — it is the standard "another profile of mine" token, not
+   * one of their class names, and markdown can't set it, so a link in someone's
+   * profile README can't claim it.
+   */
+  function isAccountLink(el) {
+    if (el.tagName !== 'A') return false;
+    return (el.getAttribute('rel') || '').split(/\s+/).includes('me');
+  }
+
   function isSkippableElement(el) {
     if (SKIP_TAGS.has(el.tagName)) return true;
     if (el.matches(SKIP_SELECTOR)) return true;
     if (isEditable(el)) return true;
     if (isRepoLink(el)) return true;
+    if (isAccountLink(el)) return true;
     // Our own output — the guard that stops the observer looping on itself.
     if (el.hasAttribute(USER_ATTR)) return true;
     // Our own injected UI, which must keep showing raw usernames.

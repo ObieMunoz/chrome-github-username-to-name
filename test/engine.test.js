@@ -140,6 +140,46 @@ test('leaves the author email on the merge screen intact', () => {
   assert.equal(replacedSpans(window).length, 0);
 });
 
+test('leaves the branch reference in a merge commit subject alone', () => {
+  // A commit row on the repo home page, built the way GitHub builds it: the
+  // subject is split across links, but "from <owner>/<branch>" lands in one
+  // text node, slash and all. Rewriting the owner there breaks the ref.
+  const ref = 'from obiemunoz/feature/rewrites-code-blocks-4c0b83';
+  const window = setup(
+    '<div class="react-directory-commit-message">' +
+      '<a class="Link--secondary" href="/obiemunoz/site/commit/ffb58bd">Merge pull request</a> ' +
+      '<a class="issue-link" href="/obiemunoz/site/pull/4">#4</a> ' +
+      `<a id="ref" class="Link--secondary" href="/obiemunoz/site/commit/ffb58bd">${ref}</a>` +
+      '</div>' +
+      '<div class="react-directory-commit-message" id="prose">Stop rewriting what obiemunoz reported</div>',
+    { mappings: { obiemunoz: 'Obie Munoz' } }
+  );
+
+  assert.equal($(window, '#ref').textContent, ref);
+  // A commit message that genuinely names someone still reads as one.
+  assert.equal($(window, '#prose').textContent, 'Stop rewriting what Obie Munoz reported');
+});
+
+test('leaves the profile sidebar handles for other services alone', () => {
+  // The real sidebar rows, which GitHub marks rel="nofollow me". "@obiemunoz"
+  // under the X icon names an X account, not the person the mapping is about.
+  const window = setup(
+    '<ul class="vcard-details">' +
+      '<li class="vcard-detail" itemprop="social">' +
+      '<a id="x" rel="nofollow me" href="https://x.com/obiemunoz">@obiemunoz</a></li>' +
+      '<li class="vcard-detail" itemprop="social">' +
+      '<a id="ig" rel="nofollow me" href="https://www.instagram.com/obiemunoz/">obiemunoz</a></li>' +
+      '</ul>' +
+      '<a id="login" href="/obiemunoz" class="p-nickname">obiemunoz</a>',
+    { mappings: { obiemunoz: 'Obie Munoz' } }
+  );
+
+  assert.equal($(window, '#x').textContent, '@obiemunoz');
+  assert.equal($(window, '#ig').textContent, 'obiemunoz');
+  // The GitHub login above them is still the person.
+  assert.equal($(window, '#login').textContent, 'Obie Munoz');
+});
+
 test('leaves a repo name alone when it matches its owner', () => {
   // The real breadcrumb for github.com/ObieMunoz/obiemunoz.com: the owner is a
   // person and should be replaced, the repo slug is an identifier and must not.
