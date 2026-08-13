@@ -247,15 +247,15 @@ button.primary:hover {
   font-weight: 500;
 }
 
-/* --- color picker --------------------------------------------------------- */
+/* --- collapsible sections ------------------------------------------------- */
 
-.color {
+.section {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }
 
-.color-summary {
+.section-summary {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -265,14 +265,16 @@ button.primary:hover {
   user-select: none;
 }
 
-.color-summary:hover {
+.section-summary:hover {
   color: var(--text);
 }
 
-.color-summary:focus-visible {
+.section-summary:focus-visible {
   outline: 2px solid var(--neon);
   outline-offset: 2px;
 }
+
+/* --- color picker --------------------------------------------------------- */
 
 .color-swatch {
   width: 12px;
@@ -376,17 +378,59 @@ button.primary:hover {
   font-size: 12px;
 }
 
-/* --- footer --------------------------------------------------------------- */
+/* --- backup --------------------------------------------------------------- */
 
-.footer {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+.backup-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
 }
 
-.footer button {
-  flex: 1;
-  font-size: 12px;
+.backup-block {
+  display: grid;
+  gap: 6px;
+}
+
+.backup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.backup-head label {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.backup-head button {
+  flex: none;
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.json {
+  width: 100%;
+  height: 88px;
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.json:focus {
+  border-color: var(--neon);
+  outline: none;
+}
+
+/* Read-only: something to copy out of, not another field to fill in. */
+.json[readonly] {
+  color: var(--muted);
 }

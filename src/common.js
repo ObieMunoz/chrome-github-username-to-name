@@ -325,7 +325,7 @@
   }
 
   /**
-   * Read an exported file back into a mappings object.
+   * Read pasted JSON back into a mappings object.
    * Accepts both the wrapped export format and a bare `{username: name}` map.
    *
    * @returns {{mappings: Object, enabled: boolean|undefined, color: Object|null}}
@@ -336,7 +336,7 @@
     try {
       data = JSON.parse(json);
     } catch {
-      throw new Error("That file isn't valid JSON.");
+      throw new Error("That isn't valid JSON.");
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       throw new Error('Expected a JSON object of usernames and names.');
@@ -354,7 +354,7 @@
     }
 
     if (!Object.keys(mappings).length) {
-      throw new Error('No usable username mappings found in that file.');
+      throw new Error('No usable username mappings in that JSON.');
     }
 
     return {

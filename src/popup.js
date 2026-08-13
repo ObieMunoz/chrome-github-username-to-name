@@ -42,9 +42,10 @@
     swatches: [document.getElementById('chip-dark'), document.getElementById('chip-light')],
     note: document.getElementById('color-note'),
     colorReset: document.getElementById('color-reset'),
-    exportBtn: document.getElementById('export'),
+    exportJson: document.getElementById('export-json'),
+    copyBtn: document.getElementById('copy'),
+    importJson: document.getElementById('import-json'),
     importBtn: document.getElementById('import'),
-    importFile: document.getElementById('import-file'),
   };
 
   let settings = { enabled: true, mappings: {}, color: null };
@@ -68,13 +69,16 @@
           // The whole map lives in one sync item, capped at 8KB.
           showStatus(
             /quota/i.test(error.message)
-              ? 'Out of sync storage. Export a backup, then remove a few entries.'
+              ? 'Out of sync storage. Copy a backup, then remove a few entries.'
               : `Could not save: ${error.message}`,
             true
           );
           resolve(false);
           return;
         }
+        // The export box shows what is stored, so it is refreshed where the
+        // store is written — every path that changes a setting ends up here.
+        renderExport();
         resolve(true);
       });
     });
@@ -446,32 +450,59 @@
     }
   }
 
-  function exportMappings() {
-    const payload = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      enabled: settings.enabled,
-      color: settings.color,
-      mappings: settings.mappings,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `github-username-renamer-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    showStatus('Exported.');
+  /** Everything worth keeping, in the shape `parseImport` reads back. */
+  function renderExport() {
+    // Leave it alone while it has focus, so a refresh can't drop a selection
+    // someone is part way through copying by hand.
+    if (document.activeElement === el.exportJson) return;
+
+    el.exportJson.value = JSON.stringify(
+      {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        enabled: settings.enabled,
+        color: settings.color,
+        mappings: settings.mappings,
+      },
+      null,
+      2
+    );
   }
 
-  async function importMappings(event) {
-    const file = event.target.files && event.target.files[0];
-    event.target.value = '';
-    if (!file) return;
+  async function copyExport() {
+    try {
+      await navigator.clipboard.writeText(el.exportJson.value);
+      showStatus('Copied to the clipboard.');
+    } catch {
+      // The clipboard can be refused. Selecting the text leaves the copy one
+      // keystroke away rather than dead-ending.
+      el.exportJson.focus();
+      el.exportJson.select();
+      showStatus('Could not reach the clipboard. The text is selected — press Ctrl/⌘ C.', true);
+    }
+  }
+
+  /**
+   * The pasted text a second Import click would overwrite entries for.
+   *
+   * Overwriting is the one destructive thing this popup does, so it takes two
+   * clicks. Comparing the text rather than a flag means editing the paste asks
+   * again, and a native confirm() is avoided: the dialog can take the popup —
+   * and the pasted text with it — down.
+   */
+  let pendingImport = null;
+
+  async function importMappings() {
+    const text = el.importJson.value.trim();
+    if (!text) {
+      showStatus('Paste a backup into the box first.', true);
+      el.importJson.focus();
+      return;
+    }
 
     let parsed;
     try {
-      parsed = parseImport(await file.text());
+      parsed = parseImport(text);
     } catch (error) {
       showStatus(error.message, true);
       return;
@@ -482,12 +513,14 @@
       Object.prototype.hasOwnProperty.call(settings.mappings, username)
     );
 
-    if (overwrites.length) {
-      const proceed = confirm(
-        `${overwrites.length} of ${incoming.length} entries already exist and will be ` +
-          'overwritten with the imported values.\n\nContinue?'
+    if (overwrites.length && pendingImport !== text) {
+      pendingImport = text;
+      showStatus(
+        `${overwrites.length} of ${incoming.length} pasted names already exist. ` +
+          'Import again to overwrite them.',
+        true
       );
-      if (!proceed) return;
+      return;
     }
 
     settings.mappings = { ...settings.mappings, ...parsed.mappings };
@@ -495,6 +528,8 @@
     if (parsed.color) settings.color = parsed.color;
 
     if (await save()) {
+      pendingImport = null;
+      el.importJson.value = '';
       initPicker();
       render();
       const skipped = parsed.skipped ? `, ${parsed.skipped} skipped` : '';
@@ -509,13 +544,13 @@
     initPicker();
     wireColorPicker();
     render();
+    renderExport();
 
     el.form.addEventListener('submit', addMapping);
     el.enabled.addEventListener('change', toggleEnabled);
     el.filter.addEventListener('input', render);
-    el.exportBtn.addEventListener('click', exportMappings);
-    el.importBtn.addEventListener('click', () => el.importFile.click());
-    el.importFile.addEventListener('change', importMappings);
+    el.copyBtn.addEventListener('click', copyExport);
+    el.importBtn.addEventListener('click', importMappings);
 
     el.username.focus();
   }
