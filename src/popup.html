@@ -42,8 +42,8 @@
       <strong>Replace this GitHub username…</strong>
     </p>
 
-    <details class="color" id="color">
-      <summary class="color-summary">
+    <details class="section" id="color">
+      <summary class="section-summary">
         <span class="color-swatch" id="color-swatch" aria-hidden="true"></span>
         <span>Highlight color</span>
       </summary>
@@ -79,11 +79,34 @@
       <button type="button" class="color-reset" id="color-reset">Reset to the default green</button>
     </details>
 
-    <footer class="footer">
-      <button type="button" id="export">Export</button>
-      <button type="button" id="import">Import</button>
-      <input type="file" id="import-file" accept="application/json,.json" hidden />
-    </footer>
+    <details class="section" id="backup">
+      <summary class="section-summary">
+        <span>Backup</span>
+      </summary>
+
+      <div class="backup-body">
+        <div class="backup-block">
+          <div class="backup-head">
+            <label for="export-json">Your names, as JSON</label>
+            <button type="button" id="copy">Copy</button>
+          </div>
+          <textarea id="export-json" class="json" readonly spellcheck="false"></textarea>
+        </div>
+
+        <div class="backup-block">
+          <div class="backup-head">
+            <label for="import-json">Paste JSON to merge in</label>
+            <button type="button" id="import">Import</button>
+          </div>
+          <textarea
+            id="import-json"
+            class="json"
+            spellcheck="false"
+            placeholder='{"octocat": "The Octocat"}'
+          ></textarea>
+        </div>
+      </div>
+    </details>
 
     <script src="common.js"></script>
     <script src="popup.js"></script>

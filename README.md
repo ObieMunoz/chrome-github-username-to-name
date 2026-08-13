@@ -42,10 +42,12 @@ on each of them with a contrast ratio, so you can see before you commit whether
 it will still be readable if you switch. Type a hex for an exact shade, or
 **Reset** to go back to the default green.
 
-**Back up:** Export writes a JSON file carrying your mappings and your color
-choice; Import merges one back in. Both are also stored in
-`chrome.storage.sync`, so they follow your Chrome profile across machines on
-their own.
+**Back up:** open **Backup** in the popup. The top box holds your mappings and
+your color choice as JSON, with a **Copy** button for putting it somewhere safe;
+paste JSON into the bottom box and hit **Import** to merge it back in. Anything
+already mapped needs a second Import click before it is overwritten. No files
+change hands either way, and both are stored in `chrome.storage.sync` regardless,
+so they follow your Chrome profile across machines on their own.
 
 ## What it deliberately does not touch
 
