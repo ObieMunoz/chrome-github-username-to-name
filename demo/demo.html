@@ -46,6 +46,13 @@
             <p>Confirmed. Nice catch @u1069002 — that had been failing since Tuesday.</p>
           </div>
         </div>
+
+        <p class="label">
+          GitHub's Quote reply reads the comment's own DOM, so the one thing it must
+          never come back with is the replacement name:
+        </p>
+        <button type="button" class="quote-button" id="quote">Quote the last comment</button>
+        <pre class="quote-out" id="quote-out">Nothing quoted yet.</pre>
       </section>
 
       <section class="card">

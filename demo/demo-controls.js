@@ -21,6 +21,25 @@
     enabledButton.textContent = next ? 'Turn replacements off' : 'Turn replacements on';
   });
 
+  // --- mock quote reply -------------------------------------------------
+  // The one behaviour on this page that can't be checked by looking at it.
+  // GitHub builds a quote out of the comment's own DOM rather than out of the
+  // markdown it was written in, so if the replacement name were page text this
+  // would paste it into the reply — and GitHub would resolve the first word of
+  // it as a mention of whoever owns that account. This is the shape of what
+  // they do: read the text out, prefix every line with "> ".
+
+  const quoteButton = document.getElementById('quote');
+  const quoteOut = document.getElementById('quote-out');
+
+  quoteButton.addEventListener('click', () => {
+    const bodies = document.querySelectorAll('#thread .comment-body');
+    const text = bodies[bodies.length - 1].textContent.trim().replace(/\s*\n\s*/g, '\n');
+    // Rendered in a <pre>, which the engine skips — so what you read here is
+    // exactly the text that would be submitted.
+    quoteOut.textContent = `> ${text.replace(/\n/g, '\n> ')}`;
+  });
+
   // --- mock hovercard ---------------------------------------------------
   // Stands in for GitHub's profile popup so the injected row and the editor
   // panel can be checked without installing the extension.

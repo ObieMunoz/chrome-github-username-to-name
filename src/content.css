@@ -69,6 +69,38 @@ html[data-color-mode='dark'] {
   text-decoration-style: solid !important;
 }
 
+/*
+ * The name itself, drawn as generated content rather than written into the DOM.
+ *
+ * This is load-bearing, not a styling flourish. Everything that reads text back
+ * out of a page — GitHub's "Quote reply", copy-paste, their own scripts — walks
+ * the DOM or the rendered text, and generated content appears in neither, while
+ * the zero-size original below appears in both. So a quote of a comment that
+ * reads "@Obie Munoz" on screen comes back as `@u1069002`, which is what was
+ * actually written. Quoting used to paste the replacement name in, and GitHub
+ * resolved the first word of it as a mention of an unrelated account.
+ *
+ * If this stylesheet ever fails to load, the two rules fail together and the
+ * page reads as plain GitHub — the username at its normal size, unstyled.
+ */
+.ghun-name::before {
+  content: attr(data-ghun-shown);
+}
+
+.ghun-source {
+  /*
+   * Zero-size, deliberately not `display: none`: hidden text is dropped from
+   * `selection.toString()`, which is the last step of GitHub's quote, so hiding
+   * it that way would delete the username from the quote instead of restoring
+   * it. Letter and word spacing are lengths that survive a zero font size, so
+   * they have to be zeroed too or an eleven-character username still pushes the
+   * line along by a few pixels.
+   */
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+  word-spacing: 0 !important;
+}
+
 /* ---------------------------------------------------------------------------
  * Injected UI: the hovercard row and the editor panel.
  *
