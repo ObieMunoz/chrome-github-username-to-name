@@ -35,6 +35,12 @@ hovercard doubles as the edit surface.
 without deleting anything — handy when you need to read a page as it really is,
 or screenshot it for someone else.
 
+**Copy, quote and reply as normal:** the name is drawn over the username rather
+than written in place of it, so copying a comment — or using GitHub's **Quote
+reply** on one — gives you back `@u1069002`, exactly as it was typed. Nothing
+you send to GitHub ever carries a name this extension invented. Find-in-page
+matches the username for the same reason.
+
 **Change the color:** open **Highlight color** in the popup and click the wheel —
 angle is hue, distance from the centre is saturation. Whatever you pick is what
 you get, on both of GitHub's themes. The two swatches beside the wheel show it
@@ -91,10 +97,10 @@ reference like `ObieMunoz/site#12`. A breadcrumb spaces its slash out
 
 `src/content.js` walks text nodes with a `TreeWalker`, pruning skipped subtrees
 outright, and wraps each match in
-`<span class="ghun-name" data-ghun-raw="…">`. That one span does four jobs: it
-carries the styling, provides the hover tooltip, marks the node so the
-`MutationObserver` never reprocesses its own output, and stores the exact
-original text so toggling off restores the page losslessly.
+`<span class="ghun-name" data-ghun-raw="…" data-ghun-shown="…">`. That one span
+does four jobs: it carries the styling, provides the hover tooltip, marks the
+node so the `MutationObserver` never reprocesses its own output, and stores the
+exact original text so toggling off restores the page losslessly.
 
 Coverage comes from observing DOM mutations rather than from a list of CSS
 selectors, so it survives GitHub reshuffling their markup and picks up
@@ -104,6 +110,51 @@ The one place selectors are unavoidable is the code views, where nothing in the
 markup says "this is code". Those match on GitHub's unhashed class names
 (`react-file-line`, `react-code-text`) rather than the `*-module__*` ones beside
 them, which are build hashes and change without notice.
+
+### The name you see is never in the page
+
+The replacement is drawn by CSS. It is not written into the document:
+
+```html
+<span class="ghun-name" data-ghun-shown="@Obie Munoz" data-ghun-raw="@u1069002"
+      title="@u1069002"><span class="ghun-source" aria-hidden="true">@u1069002</span></span>
+```
+
+```css
+.ghun-name::before { content: attr(data-ghun-shown); }
+.ghun-source       { font-size: 0 !important; }
+```
+
+You read "@Obie Munoz". Everything that reads the page instead of looking at it
+— GitHub's own scripts included — reads `@u1069002`, because generated content
+is in neither the DOM nor the rendered text, while the zero-size original is in
+both.
+
+That split is the difference between changing what a page looks like and
+changing what it says, and **Quote reply** is where it earns its keep: GitHub
+builds a quote out of the comment's own DOM, not out of the markdown the
+comment was written in. It runs `textContent` through a set of markdown filters
+and then `selection.toString()` over the result. With a replacement name sitting
+in the page as text, quoting a comment that mentioned `@ObieMunoz` pasted
+
+```
+> @Obie Munoz (Foot Locker) it's only conditionally included in a certain _type_…
+```
+
+into the reply box, and GitHub resolved `@Obie` — an account that exists, and
+belongs to someone with no part in the thread. Copying a comment leaked the same
+way.
+
+`font-size: 0` rather than `display: none` is the part worth remembering:
+`selection.toString()` drops text that isn't rendered, so hiding the username
+that way would have deleted it from the quote rather than restoring it. Letter
+and word spacing are lengths that survive a zero font size, so they are zeroed
+alongside it or an eleven-character username still nudges the line along.
+
+Two things follow. Find-in-page matches `u1069002` and not `Obie Munoz` — the
+text that is really there, which is what an unextended GitHub would match too.
+And if `content.css` ever fails to load, both rules fail together and the page
+reads as plain GitHub: the username, full size, unstyled.
 
 ### Highlight color
 
@@ -170,7 +221,10 @@ python3 -m http.server 8731
 
 Then open <http://localhost:8731/demo/demo.html>. It has buttons for flipping
 the theme, toggling replacement, and injecting a late comment to exercise the
-mutation observer.
+mutation observer. **Quote the last comment** stands in for GitHub's Quote
+reply, which is the one behaviour here you can't check by looking at the page:
+it prints the text a reply would actually be submitted with, so the username has
+to come back out of a comment that reads as a name.
 
 After changing extension source, hit reload on the card in `chrome://extensions`
 **and** refresh your GitHub tab. Both steps matter: reloading alone leaves the

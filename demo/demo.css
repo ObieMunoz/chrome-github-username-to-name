@@ -45,7 +45,8 @@ body {
   color: var(--muted);
 }
 
-.toolbar button {
+.toolbar button,
+.quote-button {
   padding: 5px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -128,6 +129,15 @@ a:hover {
   margin: 14px 0 4px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.quote-out {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  white-space: pre-wrap;
 }
 
 pre,

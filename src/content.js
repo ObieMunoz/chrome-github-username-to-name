@@ -2,8 +2,10 @@
  * Rewrites mapped GitHub usernames in visible text.
  *
  * Every replacement is wrapped in a marked span holding the exact original
- * text, which gives us three things at once: the neon styling hook, the
- * hover tooltip, and a lossless undo when settings change.
+ * text, which gives us four things at once: the neon styling hook, the hover
+ * tooltip, a lossless undo when settings change, and — because the original is
+ * the only real text in the span — an unchanged answer for anything that reads
+ * text back out of the page. See `buildReplacement` for how that last one works.
  */
 (function () {
   'use strict';
@@ -18,8 +20,10 @@
   } = globalThis.GHUN;
 
   const CLASS = 'ghun-name';
+  const SOURCE_CLASS = 'ghun-source';
   const USER_ATTR = 'data-ghun-user';
   const RAW_ATTR = 'data-ghun-raw';
+  const SHOWN_ATTR = 'data-ghun-shown';
 
   /**
    * Subtrees we never rewrite.
@@ -133,6 +137,26 @@
 
   // --- replacement -----------------------------------------------------------
 
+  /**
+   * Build the span for one match.
+   *
+   * The name you read is not text: content.css draws it as generated content
+   * from `data-ghun-shown`, and the span's only real text is the original
+   * username, rendered at zero size.
+   *
+   * That split is the difference between changing what a page looks like and
+   * changing what it says. GitHub's "Quote reply" builds its markdown out of
+   * the comment's own DOM — `textContent` through the markdown filters, then
+   * `selection.toString()` over the result — and neither of those can see
+   * generated content, while both see the zero-size text. So a quote comes back
+   * carrying `@u1069002` even though the comment reads "@Obie Munoz", and the
+   * same holds for every other reader of page text, copy-paste included.
+   *
+   * Getting this wrong is not cosmetic: quoting "@ObieMunoz" used to paste
+   * "@Obie Munoz (Foot Locker)" into the reply box, which GitHub then resolved
+   * as a mention of @Obie — a real account, belonging to someone with nothing
+   * to do with the thread.
+   */
   function buildReplacement(rawMatch, atSign, username) {
     const replacement = settings.mappings[username.toLowerCase()];
     if (!replacement) return null;
@@ -141,8 +165,17 @@
     span.className = CLASS;
     span.setAttribute(USER_ATTR, username);
     span.setAttribute(RAW_ATTR, rawMatch);
+    span.setAttribute(SHOWN_ATTR, atSign + replacement);
     span.title = rawMatch;
-    span.textContent = atSign + replacement;
+
+    const source = document.createElement('span');
+    source.className = SOURCE_CLASS;
+    // Chrome reads generated content out to a screen reader, so the name is
+    // already announced; without this the username would follow it every time.
+    source.setAttribute('aria-hidden', 'true');
+    source.textContent = rawMatch;
+    span.appendChild(source);
+
     return span;
   }
 

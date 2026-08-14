@@ -35,6 +35,35 @@ function setup(bodyHtml, { mappings = MAPPINGS, enabled = true, chromeStub = nul
 const $ = (window, selector) => window.document.querySelector(selector);
 const replacedSpans = (window) => window.document.querySelectorAll('span.ghun-name');
 
+/**
+ * What the page reads as — which is deliberately not what its text says.
+ *
+ * A replacement is drawn by content.css as generated content from
+ * `data-ghun-shown`, and the span's own text stays the original username. So
+ * `textContent` is the assertion for what a copy, a quote reply, or GitHub's
+ * own scripts come away with, and this is the assertion for what a person sees.
+ * jsdom applies no stylesheets, so the name is reassembled here the same way
+ * the cascade would.
+ *
+ * @param {string|Element} target a selector, or the element itself.
+ */
+function shown(window, target) {
+  const root = typeof target === 'string' ? $(window, target) : target;
+  const { TEXT_NODE, ELEMENT_NODE } = window.Node;
+
+  const read = (el) => {
+    let text = '';
+    for (const node of el.childNodes) {
+      if (node.nodeType === TEXT_NODE) text += node.nodeValue;
+      else if (node.nodeType !== ELEMENT_NODE) continue;
+      else if (node.classList.contains('ghun-name')) text += node.getAttribute('data-ghun-shown');
+      else text += read(node);
+    }
+    return text;
+  };
+  return read(root);
+}
+
 // --- the safety rules ------------------------------------------------------
 
 test('never rewrites textarea contents', () => {
@@ -58,7 +87,7 @@ test('never rewrites code or pre blocks', () => {
   );
   assert.equal($(window, '#p').textContent, 'git blame --author=u1069002');
   // The surrounding prose still gets replaced.
-  assert.equal($(window, '#t').textContent, 'reviewed by Obie Munoz');
+  assert.equal(shown(window, '#t'), 'reviewed by Obie Munoz');
 });
 
 /**
@@ -157,7 +186,7 @@ test('leaves the branch reference in a merge commit subject alone', () => {
 
   assert.equal($(window, '#ref').textContent, ref);
   // A commit message that genuinely names someone still reads as one.
-  assert.equal($(window, '#prose').textContent, 'Stop rewriting what Obie Munoz reported');
+  assert.equal(shown(window, '#prose'), 'Stop rewriting what Obie Munoz reported');
 });
 
 test('leaves the profile sidebar handles for other services alone', () => {
@@ -177,7 +206,7 @@ test('leaves the profile sidebar handles for other services alone', () => {
   assert.equal($(window, '#x').textContent, '@obiemunoz');
   assert.equal($(window, '#ig').textContent, 'obiemunoz');
   // The GitHub login above them is still the person.
-  assert.equal($(window, '#login').textContent, 'Obie Munoz');
+  assert.equal(shown(window, '#login'), 'Obie Munoz');
 });
 
 test('leaves a repo name alone when it matches its owner', () => {
@@ -191,7 +220,7 @@ test('leaves a repo name alone when it matches its owner', () => {
     { mappings: { obiemunoz: 'Obie Munoz' } }
   );
 
-  assert.equal($(window, '#owner').textContent, 'Obie Munoz');
+  assert.equal(shown(window, '#owner'), 'Obie Munoz');
   assert.equal($(window, '#repo').textContent, 'obiemunoz.com');
 });
 
@@ -208,14 +237,14 @@ test('still replaces mentions inside deeper repo links', () => {
     '<a id="pr" href="/obiemunoz/site/pull/12">fix reported by obiemunoz</a>',
     { mappings: { obiemunoz: 'Obie Munoz' } }
   );
-  assert.equal($(window, '#pr').textContent, 'fix reported by Obie Munoz');
+  assert.equal(shown(window, '#pr'), 'fix reported by Obie Munoz');
 });
 
 test('leaves the profile link href untouched', () => {
   const window = setup('<a id="a" href="/u1069002" class="author">u1069002</a>');
   const link = $(window, '#a');
   assert.equal(link.getAttribute('href'), '/u1069002');
-  assert.equal(link.textContent, 'Obie Munoz');
+  assert.equal(shown(window, link), 'Obie Munoz');
   assert.equal(link.querySelector('span.ghun-name').getAttribute('data-ghun-user'), 'u1069002');
 });
 
@@ -223,12 +252,12 @@ test('leaves the profile link href untouched', () => {
 
 test('replaces a bare username and keeps surrounding text', () => {
   const window = setup('<p id="t">opened by u1069002 3 hours ago</p>');
-  assert.equal($(window, '#t').textContent, 'opened by Obie Munoz 3 hours ago');
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz 3 hours ago');
 });
 
 test('keeps the @ on a mention', () => {
   const window = setup('<p id="t">cc @u1069002 for review</p>');
-  assert.equal($(window, '#t').textContent, 'cc @Obie Munoz for review');
+  assert.equal(shown(window, '#t'), 'cc @Obie Munoz for review');
 });
 
 test('exposes the original username as a tooltip', () => {
@@ -237,6 +266,54 @@ test('exposes the original username as a tooltip', () => {
   assert.equal(span.getAttribute('title'), '@u1069002');
   assert.equal(span.getAttribute('data-ghun-raw'), '@u1069002');
   assert.equal(span.getAttribute('data-ghun-user'), 'u1069002');
+  assert.equal(span.getAttribute('data-ghun-shown'), '@Obie Munoz');
+});
+
+// --- what the page says, as opposed to what it reads as ---------------------
+//
+// GitHub's "Quote reply" builds its markdown out of the comment's own DOM, so
+// the name has to stay out of the DOM's text or it ends up submitted. The bug
+// this guards against: quoting a comment that mentioned "@ObieMunoz" pasted
+// "@Obie Munoz (Foot Locker)" into the reply box, and GitHub read the first
+// word of that as a mention of @Obie — a real account with no part in the
+// thread.
+
+test('leaves the original username as the only text in the page', () => {
+  const window = setup('<p id="t">cc @u1069002 for review</p>');
+
+  // What a quote, a copy, or any other reader of page text comes away with.
+  assert.equal($(window, '#t').textContent, 'cc @u1069002 for review');
+  // What the reader of the page sees.
+  assert.equal(shown(window, '#t'), 'cc @Obie Munoz for review');
+});
+
+test('keeps a whole comment body quotable verbatim', () => {
+  // The comment from the report, in GitHub's own markup.
+  const body =
+    '<p><a class="user-mention" href="/u1069002">@u1069002</a> ' +
+    "it's only conditionally included in a certain <em>type</em> of response.</p>";
+  const window = setup(`<div id="c" class="comment-body">${body}</div>`);
+
+  assert.equal(
+    $(window, '#c').textContent,
+    "@u1069002 it's only conditionally included in a certain type of response."
+  );
+  assert.equal(
+    shown(window, '#c'),
+    "@Obie Munoz it's only conditionally included in a certain type of response."
+  );
+});
+
+test('carries the name on an element a screen reader will read once', () => {
+  const window = setup('<p>cc @u1069002</p>');
+  const span = replacedSpans(window)[0];
+  const source = span.querySelector('span.ghun-source');
+
+  // The name is announced from the generated content; the username underneath
+  // it is for the machines, so it is hidden from assistive technology.
+  assert.equal(source.textContent, '@u1069002');
+  assert.equal(source.getAttribute('aria-hidden'), 'true');
+  assert.equal(span.children.length, 1);
 });
 
 test('replaces every occurrence across a realistic page', () => {
@@ -251,12 +328,14 @@ test('replaces every occurrence across a realistic page', () => {
 
 test('does nothing when disabled', () => {
   const window = setup('<p id="t">opened by u1069002</p>', { enabled: false });
-  assert.equal($(window, '#t').textContent, 'opened by u1069002');
+  assert.equal(shown(window, '#t'), 'opened by u1069002');
+  assert.equal(replacedSpans(window).length, 0);
 });
 
 test('does nothing when there are no mappings', () => {
   const window = setup('<p id="t">opened by u1069002</p>', { mappings: {} });
-  assert.equal($(window, '#t').textContent, 'opened by u1069002');
+  assert.equal(shown(window, '#t'), 'opened by u1069002');
+  assert.equal(replacedSpans(window).length, 0);
 });
 
 // --- idempotency and undo ---------------------------------------------------
@@ -266,13 +345,14 @@ test('scanning twice does not double-wrap', () => {
   window.GHUN_ENGINE.scan(window.document.body);
   window.GHUN_ENGINE.scan(window.document.body);
   assert.equal(replacedSpans(window).length, 1);
-  assert.equal($(window, '#t').textContent, 'opened by Obie Munoz');
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
 });
 
 test('restoreAll puts the original text back exactly', () => {
   const original = 'opened by u1069002 and @u1069002 replied';
   const window = setup(`<p id="t">${original}</p>`);
-  assert.notEqual($(window, '#t').textContent, original);
+  assert.equal(replacedSpans(window).length, 2);
+  assert.notEqual(shown(window, '#t'), original);
 
   window.GHUN_ENGINE.restoreAll();
   assert.equal($(window, '#t').textContent, original);
@@ -283,13 +363,14 @@ test('restoreAll puts the original text back exactly', () => {
 
 test('changing settings re-renders without a reload', () => {
   const window = setup('<p id="t">opened by u1069002</p>');
-  assert.equal($(window, '#t').textContent, 'opened by Obie Munoz');
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
 
   window.GHUN_ENGINE.applySettings({ enabled: true, mappings: { u1069002: 'O. Munoz' } });
-  assert.equal($(window, '#t').textContent, 'opened by O. Munoz');
+  assert.equal(shown(window, '#t'), 'opened by O. Munoz');
 
   window.GHUN_ENGINE.applySettings({ enabled: false, mappings: MAPPINGS });
-  assert.equal($(window, '#t').textContent, 'opened by u1069002');
+  assert.equal(shown(window, '#t'), 'opened by u1069002');
+  assert.equal(replacedSpans(window).length, 0);
 });
 
 // --- live DOM updates -------------------------------------------------------
@@ -316,7 +397,7 @@ test('replaces content added after load, the way GitHub does', async () => {
   await new Promise((resolve) => setTimeout(resolve, 10));
 
   assert.equal(replacedSpans(window).length, 1);
-  assert.equal(comment.textContent, 'Obie Munoz commented');
+  assert.equal(shown(window, comment), 'Obie Munoz commented');
 });
 
 test('does not loop forever on its own mutations', async () => {
@@ -332,5 +413,5 @@ test('does not loop forever on its own mutations', async () => {
   await new Promise((resolve) => setTimeout(resolve, 30));
 
   assert.equal(replacedSpans(window).length, 1);
-  assert.equal($(window, '#t').textContent, 'opened by Obie Munoz');
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
 });
