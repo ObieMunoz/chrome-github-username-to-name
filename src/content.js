@@ -65,6 +65,7 @@
   let settings = { ...DEFAULT_SETTINGS };
   let matcher = null;
   let observer = null;
+  let colorObserver = null;
 
   const queuedRoots = new Set();
   let flushScheduled = false;
@@ -314,13 +315,49 @@
    * Clearing it rather than writing a default back is what lets content.css keep
    * owning the shipped default: its own cascade still swaps neon for a readable
    * green on the light theme, and an inline value here simply outranks it.
+   *
+   * Writing only on a difference is what makes this callable as often as we
+   * like, which `watchColor` below needs: re-writing the value already there
+   * would mutate the attribute it watches and feed the observer its own writes.
    */
   function applyColor() {
     const root = document.documentElement;
     if (!root) return;
 
-    if (settings.color) root.style.setProperty('--ghun-color', settings.color);
-    else root.style.removeProperty('--ghun-color');
+    const current = root.style.getPropertyValue('--ghun-color');
+    if (settings.color) {
+      if (current !== settings.color) root.style.setProperty('--ghun-color', settings.color);
+    } else if (current) {
+      root.style.removeProperty('--ghun-color');
+    }
+  }
+
+  /**
+   * Put the color back whenever the page clears it.
+   *
+   * The color is the one piece of our state that lives outside the body — a
+   * single custom property on `<html>` — and it was the one piece nothing
+   * maintained. Every replaced name is rebuilt as GitHub rewrites the page,
+   * because the observer above is watching; the color was written once, when
+   * settings were read, and left to survive on its own.
+   *
+   * It doesn't survive. Coming back to a page GitHub has already rendered — the
+   * reproduction is Back, from a pull request to the list it was opened from —
+   * lands on an `<html>` whose inline style is gone, taking the property with
+   * it, so every name on the restored page falls back to the shipped default.
+   * That is also why a reload appears to fix it: a reload is a fresh document,
+   * which runs `start` again.
+   *
+   * Watching the attribute is what keeps this fixed rather than fixed-for-now:
+   * whichever bit of GitHub's code clears the style, and whichever navigation
+   * gets it cleared, the property goes back the moment it goes missing.
+   */
+  function watchColor() {
+    const root = document.documentElement;
+    if (colorObserver || !root) return;
+
+    colorObserver = new MutationObserver(() => applyColor());
+    colorObserver.observe(root, { attributes: true, attributeFilter: ['style'] });
   }
 
   function applySettings(stored, { rescan = true } = {}) {
@@ -348,6 +385,8 @@
   function shutdown() {
     if (observer) observer.disconnect();
     observer = null;
+    if (colorObserver) colorObserver.disconnect();
+    colorObserver = null;
   }
 
   function start() {
@@ -358,6 +397,7 @@
       applySettings(result[STORAGE_KEY], { rescan: false });
       if (settings.enabled && matcher) scan(document.body);
       startObserver();
+      watchColor();
     });
 
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -366,9 +406,14 @@
       applySettings(changes[STORAGE_KEY].newValue);
     });
 
-    // Turbo can swap the whole body at once; the observer catches that, but a
-    // direct hook costs nothing and closes any gap on soft navigation.
-    document.addEventListener('turbo:load', () => scan(document.body));
+    // Turbo can swap the whole body at once; the observers catch that, but a
+    // direct hook costs nothing and closes any gap on soft navigation. The
+    // color is re-applied from here too, since this reads `<html>` afresh and
+    // so still lands if a navigation ever replaces the element being watched.
+    document.addEventListener('turbo:load', () => {
+      applyColor();
+      scan(document.body);
+    });
     document.addEventListener('turbo:frame-load', (event) => scan(event.target));
   }
 

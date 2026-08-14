@@ -183,6 +183,14 @@ which outranks the stylesheet and flattens the cascade above. Clearing it —
 rather than writing a default back — is what lets `content.css` keep owning the
 theme-aware default, so **Reset** restores that behavior exactly.
 
+That property is also the only piece of state living outside the body, where
+nothing was rebuilding it: GitHub clears `<html>`'s inline style on some
+navigations, and going **Back** from a pull request to the list it was opened
+from used to land on a page where every name had dropped to the shipped default
+until the next reload. A second observer watches that attribute and puts the
+property back the moment it goes missing, so this holds whichever navigation —
+and whichever bit of GitHub's own code — clears it.
+
 The wheel covers hue and saturation and is painted at a fixed lightness, and a
 click stores that same lightness, so the pixel under the cursor is exactly the
 color saved. Anything outside that band goes in the hex field, which repaints
