@@ -415,3 +415,95 @@ test('does not loop forever on its own mutations', async () => {
   assert.equal(replacedSpans(window).length, 1);
   assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
 });
+
+// --- highlight color --------------------------------------------------------
+
+/**
+ * The color is published to `<html>`, outside anything a scan touches, and only
+ * on start — so these drive the real `start` rather than calling applySettings.
+ */
+function started(stored) {
+  const chromeStub = () => ({
+    runtime: { id: 'test-extension', lastError: null },
+    storage: {
+      sync: { get: (key, cb) => cb({ [key]: stored }) },
+      onChanged: { addListener() {} },
+    },
+  });
+  return setup('<p id="t">opened by u1069002</p>', { chromeStub });
+}
+
+const inlineColor = (window) =>
+  window.document.documentElement.style.getPropertyValue('--ghun-color');
+
+/** A layout variable of GitHub's own, to stand in for whatever it writes. */
+const PAGE_STYLE = '--sticky-pane-height: 100px;';
+
+test('puts the highlight color back when the page clears it', async () => {
+  // Navigating back to a page GitHub has already rendered brings it back with
+  // <html>'s inline style gone. Every name on it then read as the shipped
+  // default, and only a reload — a fresh document — put the pick back.
+  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+  assert.equal(inlineColor(window), '#ff00ff');
+
+  window.document.documentElement.removeAttribute('style');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(inlineColor(window), '#ff00ff');
+});
+
+test('puts it back without taking the page style with it', async () => {
+  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+  const root = window.document.documentElement;
+
+  root.setAttribute('style', PAGE_STYLE);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal(inlineColor(window), '#ff00ff');
+  assert.equal(root.style.getPropertyValue('--sticky-pane-height'), '100px');
+});
+
+test('writes no color at all while on the default', async () => {
+  const window = started({ enabled: true, mappings: MAPPINGS });
+  const root = window.document.documentElement;
+  assert.equal(inlineColor(window), '');
+
+  root.setAttribute('style', PAGE_STYLE);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  // content.css owns the theme-aware default, so watching must not turn into
+  // writing one back: any inline value here would outrank the whole cascade.
+  assert.equal(inlineColor(window), '');
+});
+
+test('does not trade writes with the page over the color', async () => {
+  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+  const root = window.document.documentElement;
+
+  let writes = 0;
+  const spy = new window.MutationObserver((records) => {
+    writes += records.length;
+  });
+  spy.observe(root, { attributes: true, attributeFilter: ['style'] });
+
+  root.removeAttribute('style');
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  spy.disconnect();
+
+  // The page's clear, then one write to put the color back. Re-writing a value
+  // already there would mutate the attribute again and restart the cycle.
+  assert.equal(writes, 2);
+  assert.equal(inlineColor(window), '#ff00ff');
+});
+
+test('re-applies the color on a soft navigation', () => {
+  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+
+  // With the observers stopped, the navigation hook is the only path left —
+  // which is the case where the element being watched is no longer the live one.
+  window.GHUN_ENGINE.shutdown();
+  window.document.documentElement.removeAttribute('style');
+  window.document.dispatchEvent(new window.Event('turbo:load'));
+
+  assert.equal(inlineColor(window), '#ff00ff');
+});
