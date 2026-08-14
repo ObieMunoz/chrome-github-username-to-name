@@ -18,8 +18,18 @@
   box-sizing: border-box;
 }
 
+/*
+ * Chrome will not give a popup more than 600px of height, so the body is bounded
+ * there and laid out as a column. Everything inside keeps its size except the
+ * list, which is what gives ground when the popup runs out of room — a long
+ * status message or the filter row comes out of the list rather than pushing
+ * anything off the bottom.
+ */
 body {
+  display: flex;
+  flex-direction: column;
   width: 380px;
+  max-height: 600px;
   margin: 0;
   padding: 14px;
   background: var(--bg);
@@ -166,9 +176,114 @@ button.primary:hover {
   background: color-mix(in srgb, var(--neon) 24%, transparent);
 }
 
+/* --- views ---------------------------------------------------------------- */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/*
+ * Only one view is in the document's flow at a time, so the popup is only ever
+ * as tall as the view being looked at. Spelled out because the `display` above
+ * would otherwise beat the `hidden` attribute's own rule.
+ */
+.view[hidden] {
+  display: none;
+}
+
+/* The list absorbs the slack; nothing else on the main view is squeezable. */
+#view-main > * {
+  flex: none;
+}
+
+#view-main > .list {
+  flex: 1 1 auto;
+  min-height: 76px;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.back {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.back:focus-visible {
+  outline: 2px solid var(--neon);
+  outline-offset: 2px;
+}
+
+/* --- panel links ---------------------------------------------------------- */
+
+.nav {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+  text-align: left;
+}
+
+.nav-row:hover {
+  border-color: var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.nav-row:focus-visible {
+  outline: 2px solid var(--neon);
+  outline-offset: 2px;
+}
+
+.nav-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-value {
+  flex: none;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.chevron {
+  flex: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+
 /* --- status --------------------------------------------------------------- */
 
+/* Last in the body, below whichever view is up, and never squeezed. */
 .status {
+  flex: none;
   margin: 10px 0 0;
   padding: 7px 9px;
   border-radius: 6px;
@@ -247,33 +362,6 @@ button.primary:hover {
   font-weight: 500;
 }
 
-/* --- collapsible sections ------------------------------------------------- */
-
-.section {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.section-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.section-summary:hover {
-  color: var(--text);
-}
-
-.section-summary:focus-visible {
-  outline: 2px solid var(--neon);
-  outline-offset: 2px;
-}
-
 /* --- color picker --------------------------------------------------------- */
 
 .color-swatch {
@@ -288,7 +376,6 @@ button.primary:hover {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 12px;
-  margin-top: 12px;
 }
 
 .wheel-stage {
@@ -383,7 +470,6 @@ button.primary:hover {
 .backup-body {
   display: grid;
   gap: 12px;
-  margin-top: 12px;
 }
 
 .backup-block {

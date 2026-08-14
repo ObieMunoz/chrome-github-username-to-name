@@ -36,6 +36,7 @@
     list: document.getElementById('list'),
     empty: document.getElementById('empty'),
     swatch: document.getElementById('color-swatch'),
+    colorValue: document.getElementById('color-value'),
     wheel: document.getElementById('wheel'),
     marker: document.getElementById('wheel-marker'),
     hex: document.getElementById('hex'),
@@ -81,6 +82,68 @@
         renderExport();
         resolve(true);
       });
+    });
+  }
+
+  // --- views -----------------------------------------------------------------
+
+  /**
+   * One view at a time.
+   *
+   * A Chrome popup is capped at 600px tall, and the list, the color wheel and
+   * the backup boxes come to well over that together — unfolded in place, most
+   * of a panel sat below the fold with only an overlay scrollbar, invisible at
+   * rest, to say so. Swapping views instead keeps every one of them inside the
+   * cap on its own, so there is never anything off the bottom to discover.
+   */
+  const views = {
+    main: document.getElementById('view-main'),
+    color: document.getElementById('view-color'),
+    backup: document.getElementById('view-backup'),
+  };
+
+  /** The row a panel was opened from, so Back can hand focus straight back. */
+  let openedFrom = null;
+
+  function showView(name) {
+    for (const [key, view] of Object.entries(views)) view.hidden = key !== name;
+    // Views are separate pages as far as the reader is concerned, so none of
+    // them should open part way down. The popup only has a scroll position to
+    // inherit when it is zoomed past the point where 600px still fits, but that
+    // is exactly when opening mid-panel would be worst.
+    window.scrollTo(0, 0);
+  }
+
+  function openPanel(name, from) {
+    openedFrom = from;
+    showView(name);
+    // The way out, rather than the first control: a panel opened by keyboard
+    // otherwise leaves focus on a row that is no longer on the page.
+    views[name].querySelector('.back').focus();
+  }
+
+  function closePanel() {
+    showView('main');
+    if (openedFrom) openedFrom.focus();
+    openedFrom = null;
+  }
+
+  function wireViews() {
+    for (const row of document.querySelectorAll('.nav-row')) {
+      row.addEventListener('click', () => openPanel(row.dataset.open, row));
+    }
+    for (const back of document.querySelectorAll('.back')) {
+      back.addEventListener('click', closePanel);
+    }
+
+    // Escape reads as "back" once there is somewhere to go back to. Whether the
+    // browser lets the popup keep the key is up to the browser; where it does
+    // not, this falls back to the popup closing, which is what Escape did here
+    // before either way.
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !views.main.hidden) return;
+      event.preventDefault();
+      closePanel();
     });
   }
 
@@ -321,7 +384,10 @@
       'Used on both GitHub themes. The two swatches show it on each.';
 
     document.documentElement.style.setProperty('--neon', color);
+    // The row into the panel carries the pick, so the list still answers "what
+    // color is it?" without a trip inside.
     el.swatch.style.background = color;
+    el.colorValue.textContent = color;
     el.colorReset.hidden = !settings.color;
   }
 
@@ -542,6 +608,7 @@
   async function init() {
     settings = await load();
     initPicker();
+    wireViews();
     wireColorPicker();
     render();
     renderExport();

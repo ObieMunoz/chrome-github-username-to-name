@@ -6,47 +6,66 @@
     <link rel="stylesheet" href="popup.css" />
   </head>
   <body>
-    <header class="header">
-      <div class="brand">
-        <h1>Username Renamer</h1>
-        <p class="subtitle" id="summary">No names yet</p>
+    <!--
+      Three views, one shown at a time. A Chrome popup is capped at 600px tall,
+      and the list, the color wheel and the backup boxes come to more than that
+      together — so the two settings panels replace the list rather than unfold
+      beneath it, and nothing ends up below the fold at any list size.
+    -->
+    <section class="view" id="view-main">
+      <header class="header">
+        <div class="brand">
+          <h1>Username Renamer</h1>
+          <p class="subtitle" id="summary">No names yet</p>
+        </div>
+        <label class="switch" title="Turn all replacements on or off">
+          <input type="checkbox" id="enabled" />
+          <span class="track"><span class="thumb"></span></span>
+        </label>
+      </header>
+
+      <form class="add-form" id="add-form" autocomplete="off">
+        <div class="field">
+          <label for="username">GitHub username</label>
+          <input type="text" id="username" placeholder="GitHub Username" spellcheck="false" required />
+        </div>
+        <div class="field">
+          <label for="replacement">Show instead</label>
+          <input type="text" id="replacement" placeholder="Real Name" required />
+        </div>
+        <button type="submit" class="primary">Add</button>
+      </form>
+
+      <div class="list-header" id="list-header" hidden>
+        <input type="search" id="filter" placeholder="Filter…" spellcheck="false" />
       </div>
-      <label class="switch" title="Turn all replacements on or off">
-        <input type="checkbox" id="enabled" />
-        <span class="track"><span class="thumb"></span></span>
-      </label>
-    </header>
 
-    <form class="add-form" id="add-form" autocomplete="off">
-      <div class="field">
-        <label for="username">GitHub username</label>
-        <input type="text" id="username" placeholder="GitHub Username" spellcheck="false" required />
-      </div>
-      <div class="field">
-        <label for="replacement">Show instead</label>
-        <input type="text" id="replacement" placeholder="Real Name" required />
-      </div>
-      <button type="submit" class="primary">Add</button>
-    </form>
+      <ul class="list" id="list"></ul>
 
-    <p class="status" id="status" role="status" aria-live="polite" hidden></p>
+      <p class="empty" id="empty">
+        Add a username above, or right-click any username on GitHub and choose
+        <strong>Replace this GitHub username…</strong>
+      </p>
 
-    <div class="list-header" id="list-header" hidden>
-      <input type="search" id="filter" placeholder="Filter…" spellcheck="false" />
-    </div>
+      <nav class="nav">
+        <button type="button" class="nav-row" data-open="color">
+          <span class="color-swatch" id="color-swatch" aria-hidden="true"></span>
+          <span class="nav-label">Highlight color</span>
+          <span class="nav-value" id="color-value"></span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="nav-row" data-open="backup">
+          <span class="nav-label">Backup</span>
+          <span class="chevron" aria-hidden="true">›</span>
+        </button>
+      </nav>
+    </section>
 
-    <ul class="list" id="list"></ul>
-
-    <p class="empty" id="empty">
-      Add a username above, or right-click any username on GitHub and choose
-      <strong>Replace this GitHub username…</strong>
-    </p>
-
-    <details class="section" id="color">
-      <summary class="section-summary">
-        <span class="color-swatch" id="color-swatch" aria-hidden="true"></span>
-        <span>Highlight color</span>
-      </summary>
+    <section class="view" id="view-color" hidden>
+      <header class="panel-head">
+        <button type="button" class="back" aria-label="Back to the name list">‹</button>
+        <h1>Highlight color</h1>
+      </header>
 
       <div class="color-body">
         <div class="wheel-stage">
@@ -77,12 +96,13 @@
       </div>
 
       <button type="button" class="color-reset" id="color-reset">Reset to the default green</button>
-    </details>
+    </section>
 
-    <details class="section" id="backup">
-      <summary class="section-summary">
-        <span>Backup</span>
-      </summary>
+    <section class="view" id="view-backup" hidden>
+      <header class="panel-head">
+        <button type="button" class="back" aria-label="Back to the name list">‹</button>
+        <h1>Backup</h1>
+      </header>
 
       <div class="backup-body">
         <div class="backup-block">
@@ -106,7 +126,14 @@
           ></textarea>
         </div>
       </div>
-    </details>
+    </section>
+
+    <!--
+      Outside the views, so a message raised from a panel — an import warning,
+      a failed copy — is shown wherever it was raised from, and so the live
+      region stays put in the DOM across a view change.
+    -->
+    <p class="status" id="status" role="status" aria-live="polite" hidden></p>
 
     <script src="common.js"></script>
     <script src="popup.js"></script>
