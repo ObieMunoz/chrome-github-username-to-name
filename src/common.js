@@ -175,12 +175,27 @@
    * This is the most reliable source available: it comes from the trigger element
    * GitHub itself annotates, rather than from the popup's markup.
    *
+   * Absolute forms of the same endpoint are accepted too, so the annotation
+   * keeps working if GitHub ever renders it fully qualified.
+   *
    * Organization hovercards use `/orgs/...` and are intentionally not matched.
    *
    * @returns {string|null} the username in its original case.
    */
   function usernameFromHovercardUrl(url) {
-    const match = /^\/users\/([^/?#]+)\/hovercard/.exec(String(url || ''));
+    let path = String(url || '');
+    if (path.includes('://')) {
+      let parsed;
+      try {
+        parsed = new URL(path);
+      } catch {
+        return null;
+      }
+      if (parsed.hostname !== 'github.com') return null;
+      path = parsed.pathname;
+    }
+
+    const match = /^\/users\/([^/?#]+)\/hovercard/.exec(path);
     if (!match) return null;
 
     const candidate = decodeURIComponent(match[1]);

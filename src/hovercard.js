@@ -1,6 +1,23 @@
 /**
- * Adds a "Show as a real name…" row to GitHub's own profile hovercard, so a
+ * Adds a "Show as a real name…" row to GitHub's profile hovercard, so a
  * username can be mapped from wherever it appears without leaving the page.
+ *
+ * GitHub currently runs two hovercard implementations side by side, and this
+ * file has to serve both:
+ *
+ *  - The classic one: a single `.js-hovercard-content` container in the page
+ *    layout, into which server-rendered card HTML is swapped. Triggers carry
+ *    `data-hovercard-url`.
+ *  - The React one, used on the rewritten surfaces (issues, pull requests,
+ *    dashboard): the card is rendered as an overlay into the
+ *    `#__primerPortalRoot__` portal or a native `[popover]` element, and the
+ *    trigger is often a plain profile link with no `data-hovercard-url`.
+ *
+ * The classic path is matched exactly. The React path has no stable class
+ * names (they are build-hashed), so it is matched by behaviour instead: an
+ * overlay that appears right after a profile link was hovered, without a
+ * click in between, and that links back to the hovered user, is that user's
+ * hovercard. The gates below keep click-opened menus and dialogs out.
  *
  * The editor itself is a separate panel appended to <body>, deliberately not
  * placed inside the hovercard: GitHub removes the hovercard as soon as the
@@ -9,19 +26,46 @@
 (function () {
   'use strict';
 
-  const { STORAGE_KEY, coerceSettings, usernameFromHovercardUrl, normalizeUsername } =
-    globalThis.GHUN;
+  const {
+    STORAGE_KEY,
+    coerceSettings,
+    usernameFromHovercardUrl,
+    usernameFromUrl,
+    normalizeUsername,
+  } = globalThis.GHUN;
 
   const HOVERCARD_SELECTOR = '.js-hovercard-content';
+  const PORTAL_ID = '__primerPortalRoot__';
   const ROW_CLASS = 'ghun-card-row';
+  const OVERLAY_ROW_CLASS = 'ghun-card-overlay';
   const PANEL_ID = 'ghun-panel';
 
   /**
-   * Set from GitHub's own annotation on the trigger element, which is far more
-   * reliable than reading the popup's markup. Always reassigned (including to
-   * null) so an organization hovercard can't inherit the previous user.
+   * How long after a hover an appearing overlay can still be read as that
+   * hover's card. GitHub fetches card content lazily, so this needs slack,
+   * but it must not be unbounded or any later overlay would qualify.
    */
-  let hoveredUsername = null;
+  const HOVER_FRESH_MS = 10000;
+
+  /**
+   * Real form fields mark an overlay as a menu or dialog, never a hovercard.
+   * Hidden inputs stay allowed: the card's own Follow form uses them.
+   */
+  const FORM_FIELD_SELECTOR =
+    'textarea, select, input:not([type="hidden"]):not([type="submit"])';
+
+  /**
+   * The last hover that could open a hovercard: who it was about and when.
+   *
+   * `data-hovercard-url` on the trigger is authoritative when present — it is
+   * GitHub's own annotation, and an organization's `/orgs/…` URL deliberately
+   * resolves to a null username so an org card is never enhanced. Profile
+   * links without the annotation (the React surfaces) fall back to the link
+   * target itself. Reassigned on every annotated hover, including to null, so
+   * an organization hovercard can't inherit the previous user.
+   */
+  let hovered = null;
+  let pointerDownAt = 0;
   let panel = null;
 
   // --- tracking which user the hovercard is about ----------------------------
@@ -32,10 +76,31 @@
       const target = event.target;
       if (!target || typeof target.closest !== 'function') return;
 
-      const trigger = target.closest('[data-hovercard-url]');
-      if (!trigger) return;
+      const annotated = target.closest('[data-hovercard-url]');
+      if (annotated) {
+        hovered = {
+          username: usernameFromHovercardUrl(annotated.getAttribute('data-hovercard-url')),
+          at: Date.now(),
+        };
+        return;
+      }
 
-      hoveredUsername = usernameFromHovercardUrl(trigger.getAttribute('data-hovercard-url'));
+      const link = target.closest('a[href]');
+      if (!link || link.closest('[data-ghun-ui]')) return;
+
+      const username = usernameFromUrl(link.getAttribute('href'));
+      // A non-profile link doesn't clear the state: the pointer crosses
+      // plenty of other links on its way to a card that is still loading.
+      if (username) hovered = { username, at: Date.now() };
+    },
+    true
+  );
+
+  // Overlays opened by a click — menus, dialogs — are never hovercards.
+  document.addEventListener(
+    'mousedown',
+    () => {
+      pointerDownAt = Date.now();
     },
     true
   );
@@ -195,9 +260,9 @@
     }
   }
 
-  function buildRow(username) {
+  function buildRow(username, { overlay = false } = {}) {
     const row = document.createElement('div');
-    row.className = ROW_CLASS;
+    row.className = overlay ? `${ROW_CLASS} ${OVERLAY_ROW_CLASS}` : ROW_CLASS;
     row.setAttribute('data-ghun-ui', '');
     row.dataset.ghunFor = username;
 
@@ -217,19 +282,98 @@
     return row;
   }
 
-  function enhance(card) {
-    if (!hoveredUsername) return;
-
-    const message = card.querySelector('.Popover-message') || card;
-    const existing = message.querySelector(`.${ROW_CLASS}`);
-
+  function placeRow(container, username, options) {
+    const existing = container.querySelector(`.${ROW_CLASS}`);
     if (existing) {
       // The container gets reused across users; replace a stale row.
-      if (existing.dataset.ghunFor === hoveredUsername) return;
+      if (existing.dataset.ghunFor === username) return;
       existing.remove();
     }
+    container.appendChild(buildRow(username, options));
+  }
 
-    message.appendChild(buildRow(hoveredUsername));
+  /** The classic path: GitHub swapped card HTML into `.js-hovercard-content`. */
+  function enhance(card) {
+    if (!hovered || !hovered.username) return;
+
+    const message = card.querySelector('.Popover-message') || card;
+    placeRow(message, hovered.username, { overlay: false });
+  }
+
+  /** True when the overlay links back to the hovered user's profile. */
+  function linksToProfile(overlay, username) {
+    const key = normalizeUsername(username);
+    for (const link of overlay.querySelectorAll('a[href]')) {
+      const candidate = usernameFromUrl(link.getAttribute('href'));
+      if (candidate && normalizeUsername(candidate) === key) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The React path: an overlay with no stable markup, identified by behaviour.
+   *
+   * Every gate here exists to keep this from firing on something that merely
+   * appeared near a hover: the overlay must follow the hover promptly, with no
+   * click in between (menus and dialogs open on click, hovercards never do),
+   * must not be a form (ditto), and must link back to the hovered user.
+   */
+  function enhanceOverlay(overlay) {
+    if (!hovered || !hovered.username) return;
+    if (Date.now() - hovered.at > HOVER_FRESH_MS) return;
+    // At-or-after: a press in the same millisecond as the hover is still a
+    // press, and a real hovercard needs longer than that to appear anyway.
+    if (pointerDownAt >= hovered.at && pointerDownAt !== 0) return;
+    if (!overlay.isConnected) return;
+    if (overlay.closest('[data-ghun-ui]')) return;
+    // The classic container is handled by `enhance` with exact selectors.
+    if (overlay.closest(HOVERCARD_SELECTOR)) return;
+    if (overlay.querySelector(FORM_FIELD_SELECTOR)) return;
+    if (!linksToProfile(overlay, hovered.username)) return;
+
+    placeRow(overlay, hovered.username, { overlay: true });
+  }
+
+  /**
+   * The overlay root for a node rendered into the Primer React portal: the
+   * portal's direct child the node sits under, which is the element that
+   * frames the card on screen.
+   */
+  function portalRootFor(node) {
+    const portal = document.getElementById(PORTAL_ID);
+    if (!portal || node === portal || !portal.contains(node)) return null;
+
+    let root = node;
+    while (root.parentElement && root.parentElement !== portal) root = root.parentElement;
+    return root.parentElement === portal ? root : null;
+  }
+
+  function inspectAddedNode(node) {
+    // Classic: the card itself appeared, content was swapped into an existing
+    // card (the card is then an ancestor), or a subtree brought cards along.
+    const card = node.matches(HOVERCARD_SELECTOR) ? node : node.closest(HOVERCARD_SELECTOR);
+    if (card) {
+      enhance(card);
+      return;
+    }
+    for (const inner of node.querySelectorAll(HOVERCARD_SELECTOR)) enhance(inner);
+
+    // React: content lands inside the portal in stages — the overlay shell
+    // first, the fetched card after — so the same root is re-checked on every
+    // addition and enhanced once its profile link exists.
+    const portalRoot = portalRootFor(node);
+    if (portalRoot) {
+      enhanceOverlay(portalRoot);
+      return;
+    }
+
+    // React, native popover API variant.
+    const popover = node.matches('[popover]') ? node : node.closest('[popover]');
+    if (popover) {
+      enhanceOverlay(popover);
+      return;
+    }
+    for (const inner of node.querySelectorAll('[popover]')) enhanceOverlay(inner);
   }
 
   function watchForHovercards() {
@@ -237,25 +381,17 @@
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
-
-          // Either the card itself appeared, or content was swapped into an
-          // existing card, in which case the card is an ancestor.
-          if (node.matches && node.matches(HOVERCARD_SELECTOR)) enhance(node);
-
-          const parentCard = node.closest && node.closest(HOVERCARD_SELECTOR);
-          if (parentCard) enhance(parentCard);
-
-          if (node.querySelectorAll) {
-            for (const card of node.querySelectorAll(HOVERCARD_SELECTOR)) enhance(card);
-          }
+          inspectAddedNode(node);
         }
       }
     });
 
-    observer.observe(document.body, { childList: true, subtree: true });
+    // The document element, not the body: GitHub's soft navigation can swap
+    // the whole <body>, and an observer attached to the old one dies with it.
+    observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   if (typeof chrome !== 'undefined' && chrome.storage) watchForHovercards();
 
-  globalThis.GHUN_HOVERCARD = { enhance, openPanel, watchForHovercards };
+  globalThis.GHUN_HOVERCARD = { enhance, enhanceOverlay, openPanel, watchForHovercards };
 })();

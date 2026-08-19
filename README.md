@@ -228,8 +228,9 @@ python3 -m http.server 8731
 ```
 
 Then open <http://localhost:8731/demo/demo.html>. It has buttons for flipping
-the theme, toggling replacement, and injecting a late comment to exercise the
-mutation observer. **Quote the last comment** stands in for GitHub's Quote
+the theme, toggling replacement, injecting a late comment to exercise the
+mutation observer, and switching the mock hovercard between GitHub's classic
+and React shapes. **Quote the last comment** stands in for GitHub's Quote
 reply, which is the one behaviour here you can't check by looking at the page:
 it prints the text a reply would actually be submitted with, so the username has
 to come back out of a comment that reads as a name.
@@ -241,11 +242,27 @@ behaviour with no styling.
 
 ### Notes on the hovercard row
 
-The username comes from `data-hovercard-url` on the trigger element GitHub
-itself annotates (`/users/<login>/hovercard`), not from the popup's markup —
-that value is unambiguous and survives their markup changing. It is reassigned
-on every hover, including to null, so an organization card can never inherit
-the previously hovered user.
+GitHub currently runs two hovercard implementations, and the row follows both.
+Classic pages swap server-rendered card HTML into a single
+`.js-hovercard-content` container, and the trigger carries
+`data-hovercard-url`. That annotation is authoritative whenever present
+(`/users/<login>/hovercard`) and is reassigned on every hover, including to
+null — an organization's `/orgs/…` URL resolves to no username — so an org
+card can never inherit the previously hovered user.
+
+The rewritten React surfaces (issues, pull requests, the dashboard) render the
+card as an overlay in the `#__primerPortalRoot__` portal or a native
+`[popover]` element instead, often from a plain profile link with no
+annotation at all. That overlay has no stable markup — its class names are
+build hashes — so it is recognized by behaviour rather than by selector: it
+must appear promptly after a profile link was hovered, with no mouse press in
+between (menus and dialogs open on click; hovercards never do), contain no
+real form fields, and link back to the hovered user. Only then does it get the
+row.
+
+The observer that watches for cards is attached to `document.documentElement`
+rather than `document.body`: GitHub's soft navigation can swap the whole
+`<body>`, and an observer attached to the old one silently dies with it.
 
 The editor panel is appended to `<body>`, deliberately not inside the
 hovercard: GitHub tears the hovercard down as soon as the pointer leaves it,

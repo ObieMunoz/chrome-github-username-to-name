@@ -223,3 +223,190 @@ test('the panel is excluded from username replacement', async () => {
   assert.equal(panel.querySelector('.ghun-panel-title').textContent, 'u1069002');
   assert.equal(panel.querySelectorAll('span.ghun-name').length, 0);
 });
+
+/* ---------------------------------------------------------------------------
+ * The React hovercard: an overlay in the Primer portal (or a native popover),
+ * triggered from a plain profile link with no data-hovercard-url.
+ * ------------------------------------------------------------------------- */
+
+function hoverProfileLink(window, href) {
+  const trigger = window.document.createElement('a');
+  trigger.setAttribute('href', href);
+  window.document.getElementById('app').appendChild(trigger);
+  hover(window, trigger);
+  return trigger;
+}
+
+function portalFor(window) {
+  let portal = window.document.getElementById('__primerPortalRoot__');
+  if (!portal) {
+    portal = window.document.createElement('div');
+    portal.id = '__primerPortalRoot__';
+    window.document.body.appendChild(portal);
+  }
+  return portal;
+}
+
+/** Mimic the React flow: hover a plain link, then an overlay lands in the portal. */
+async function showPortalHovercard(window, username, { linkTo = username } = {}) {
+  hoverProfileLink(window, `/${username}`);
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML = `<div><a href="/${linkTo}">${linkTo}</a><p>Bio goes here</p></div>`;
+  portalFor(window).appendChild(overlay);
+
+  await tick();
+  return overlay;
+}
+
+test('adds a row to a portal hovercard opened from a plain profile link', async () => {
+  const { window } = setup();
+  const overlay = await showPortalHovercard(window, 'u1069002');
+
+  const row = overlay.querySelector('.ghun-card-row');
+  assert.ok(row, 'expected a row in the portal overlay');
+  assert.ok(row.classList.contains('ghun-card-overlay'));
+  assert.equal(row.dataset.ghunFor, 'u1069002');
+  assert.match(row.textContent, /Show as a real name/);
+});
+
+test('enhances a portal hovercard whose content arrives after its shell', async () => {
+  const { window } = setup();
+  hoverProfileLink(window, '/u1069002');
+
+  const overlay = window.document.createElement('div');
+  portalFor(window).appendChild(overlay);
+  await tick();
+  // An empty shell is not identifiable as anyone's hovercard yet.
+  assert.equal(overlay.querySelector('.ghun-card-row'), null);
+
+  const content = window.document.createElement('div');
+  content.innerHTML = '<a href="/u1069002">u1069002</a>';
+  overlay.appendChild(content);
+  await tick();
+
+  assert.equal(overlay.querySelector('.ghun-card-row').dataset.ghunFor, 'u1069002');
+});
+
+test('adds a row to a native-popover hovercard', async () => {
+  const { window } = setup();
+  hoverProfileLink(window, '/u1069002');
+
+  const overlay = window.document.createElement('div');
+  overlay.setAttribute('popover', 'auto');
+  overlay.innerHTML = '<a href="/u1069002">u1069002</a>';
+  window.document.body.appendChild(overlay);
+  await tick();
+
+  assert.equal(overlay.querySelector('.ghun-card-row').dataset.ghunFor, 'u1069002');
+});
+
+test('replaces a stale row when a portal overlay is reused for another user', async () => {
+  const { window } = setup();
+  const overlay = await showPortalHovercard(window, 'u1069002');
+  assert.equal(overlay.querySelector('.ghun-card-row').dataset.ghunFor, 'u1069002');
+
+  hoverProfileLink(window, '/octocat');
+  const swapped = window.document.createElement('div');
+  swapped.innerHTML = '<a href="/octocat">octocat</a>';
+  overlay.appendChild(swapped);
+  await tick();
+
+  const rows = overlay.querySelectorAll('.ghun-card-row');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].dataset.ghunFor, 'octocat');
+});
+
+test('a click between hover and overlay marks a menu, not a hovercard', async () => {
+  const { window } = setup();
+  hoverProfileLink(window, '/u1069002');
+  window.document.body.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML = '<a href="/u1069002">u1069002</a>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  assert.equal(overlay.querySelector('.ghun-card-row'), null);
+});
+
+test('an overlay with form fields is a dialog, not a hovercard', async () => {
+  const { window } = setup();
+  hoverProfileLink(window, '/u1069002');
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML = '<input type="text" placeholder="Filter"><a href="/u1069002">x</a>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  assert.equal(overlay.querySelector('.ghun-card-row'), null);
+});
+
+test('an overlay that does not link to the hovered user is left alone', async () => {
+  const { window } = setup();
+  const overlay = await showPortalHovercard(window, 'u1069002', { linkTo: 'someone-else' });
+
+  assert.equal(overlay.querySelector('.ghun-card-row'), null);
+});
+
+test('an overlay long after the hover is not that hover’s card', async () => {
+  const { window } = setup();
+  hoverProfileLink(window, '/u1069002');
+
+  const realNow = window.Date.now();
+  window.Date.now = () => realNow + 60000;
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML = '<a href="/u1069002">u1069002</a>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  assert.equal(overlay.querySelector('.ghun-card-row'), null);
+});
+
+test('an annotated org trigger suppresses the portal fallback too', async () => {
+  const { window } = setup();
+
+  // GitHub's own annotation says this is an org, whatever the href looks like.
+  const trigger = window.document.createElement('a');
+  trigger.setAttribute('href', '/github');
+  trigger.setAttribute('data-hovercard-url', '/orgs/github/hovercard');
+  window.document.getElementById('app').appendChild(trigger);
+  hover(window, trigger);
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML = '<a href="/github">github</a>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  assert.equal(overlay.querySelector('.ghun-card-row'), null);
+});
+
+test('a portal row opens the same editor panel', async () => {
+  const { window, store } = setup();
+  const overlay = await showPortalHovercard(window, 'u1069002');
+
+  click(window, overlay.querySelector('.ghun-card-button'));
+  const panel = window.document.getElementById('ghun-panel');
+  assert.equal(panel.querySelector('.ghun-panel-title').textContent, 'u1069002');
+
+  panel.querySelector('.ghun-panel-input').value = 'Obie Munoz';
+  click(window, panel.querySelector('.ghun-panel-save'));
+  await tick();
+
+  assert.equal(store.ghun.mappings.u1069002, 'Obie Munoz');
+  assert.match(overlay.querySelector('.ghun-card-row').textContent, /Showing as “Obie Munoz”/);
+});
+
+test('keeps enhancing after soft navigation swaps the whole <body>', async () => {
+  const { window } = setup();
+  const doc = window.document;
+
+  const fresh = doc.createElement('body');
+  fresh.innerHTML = '<div id="app"></div>';
+  doc.documentElement.replaceChild(fresh, doc.body);
+  await tick();
+
+  const card = await showHovercard(window, '/users/u1069002/hovercard');
+  assert.ok(card.querySelector('.ghun-card-row'), 'expected the observer to survive a body swap');
+});

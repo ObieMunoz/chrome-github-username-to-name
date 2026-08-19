@@ -114,6 +114,16 @@ html[data-color-mode='dark'] {
   border-top: 1px solid var(--borderColor-muted, var(--color-border-muted, rgba(128, 128, 128, 0.3)));
 }
 
+/*
+ * A row appended to a React overlay rather than the classic card body. The
+ * overlay root has no padding of its own, so the row brings its own, and the
+ * classic variant's margin would show a strip of backdrop above the border.
+ */
+.ghun-card-row.ghun-card-overlay {
+  margin-top: 0;
+  padding: 8px;
+}
+
 .ghun-card-button {
   display: block;
   width: 100%;
