@@ -13,6 +13,7 @@
       <button type="button" id="toggle-theme">Light theme</button>
       <button type="button" id="toggle-enabled">Turn replacements off</button>
       <button type="button" id="inject">Inject a late comment</button>
+      <button type="button" id="toggle-cards">React hovercards</button>
     </div>
 
     <main class="page">
@@ -110,6 +111,9 @@
         </ul>
       </aside>
     </main>
+
+    <!-- GitHub's React overlays render into this portal on the rewritten pages. -->
+    <div id="__primerPortalRoot__"></div>
 
     <script src="../src/common.js"></script>
     <script src="demo.js"></script>

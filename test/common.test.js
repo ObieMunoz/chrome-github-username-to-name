@@ -168,6 +168,11 @@ test('isRepoRootPath identifies repo home links only', () => {
 test('usernameFromHovercardUrl reads GitHub user hovercard endpoints', () => {
   assert.equal(usernameFromHovercardUrl('/users/u1069002/hovercard'), 'u1069002');
   assert.equal(usernameFromHovercardUrl('/users/mona-lisa/hovercard?subject_id=1'), 'mona-lisa');
+  // The absolute form of the same endpoint must keep working too.
+  assert.equal(
+    usernameFromHovercardUrl('https://github.com/users/u1069002/hovercard'),
+    'u1069002'
+  );
 });
 
 test('usernameFromHovercardUrl ignores organizations and junk', () => {
@@ -176,6 +181,7 @@ test('usernameFromHovercardUrl ignores organizations and junk', () => {
   assert.equal(usernameFromHovercardUrl('/users/not a username!/hovercard'), null);
   assert.equal(usernameFromHovercardUrl(''), null);
   assert.equal(usernameFromHovercardUrl(null), null);
+  assert.equal(usernameFromHovercardUrl('https://evil.example.com/users/x/hovercard'), null);
 });
 
 test('coerceSettings drops malformed entries and defaults enabled to true', () => {

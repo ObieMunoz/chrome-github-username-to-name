@@ -42,47 +42,93 @@
 
   // --- mock hovercard ---------------------------------------------------
   // Stands in for GitHub's profile popup so the injected row and the editor
-  // panel can be checked without installing the extension.
+  // panel can be checked without installing the extension. Two shapes, matching
+  // the two implementations GitHub currently runs: the classic
+  // `.js-hovercard-content` container, and the React overlay in the Primer
+  // portal, opened from a plain profile link with no data-hovercard-url.
 
-  const { usernameFromHovercardUrl } = globalThis.GHUN;
+  const { usernameFromHovercardUrl, usernameFromUrl } = globalThis.GHUN;
+  const cardsButton = document.getElementById('toggle-cards');
+  let cardStyle = 'classic';
   let card = null;
   let cardTimer = null;
+
+  cardsButton.addEventListener('click', () => {
+    cardStyle = cardStyle === 'classic' ? 'react' : 'classic';
+    cardsButton.textContent = cardStyle === 'classic' ? 'React hovercards' : 'Classic hovercards';
+    hideCard();
+  });
 
   function hideCard() {
     if (card) card.remove();
     card = null;
   }
 
+  function usernameFor(trigger) {
+    const annotated = trigger.getAttribute('data-hovercard-url');
+    if (annotated) return usernameFromHovercardUrl(annotated);
+    return usernameFromUrl(trigger.getAttribute('href') || '');
+  }
+
+  function cardBody(username, loginMarkup) {
+    return (
+      `<div class="mock-head"><span class="mock-avatar"></span>${loginMarkup}</div>` +
+      '<p class="mock-bio">Engineering Manager · Tampa, Florida</p>' +
+      '<p class="mock-bio">Opened this pull request</p>'
+    );
+  }
+
   function showCard(trigger) {
     hideCard();
-    const username = usernameFromHovercardUrl(trigger.getAttribute('data-hovercard-url'));
+    const username = usernameFor(trigger);
     if (!username) return;
 
     const rect = trigger.getBoundingClientRect();
     card = document.createElement('div');
-    card.className = 'js-hovercard-content';
     card.style.left = `${rect.left}px`;
     card.style.top = `${rect.bottom + 8}px`;
-    card.innerHTML =
-      '<div class="Popover-message">' +
-      '<div class="mock-head"><span class="mock-avatar"></span>' +
-      `<span class="mock-login">${username}</span></div>` +
-      '<p class="mock-bio">Engineering Manager · Tampa, Florida</p>' +
-      '<p class="mock-bio">Opened this pull request</p>' +
-      '</div>';
     card.addEventListener('mouseleave', hideCard);
+
+    if (cardStyle === 'react') {
+      // The React card links to the profile; that link is how the extension
+      // identifies an unlabelled overlay as this user's hovercard.
+      card.className = 'mock-react-overlay';
+      card.innerHTML = cardBody(
+        username,
+        `<a class="mock-login" href="/${username}">${username}</a>`
+      );
+      document.getElementById('__primerPortalRoot__').appendChild(card);
+      return;
+    }
+
+    card.className = 'js-hovercard-content';
+    card.innerHTML =
+      `<div class="Popover-message">${cardBody(
+        username,
+        `<span class="mock-login">${username}</span>`
+      )}</div>`;
     document.body.appendChild(card);
   }
 
   document.addEventListener('mouseover', (event) => {
-    const trigger = event.target.closest && event.target.closest('[data-hovercard-url]');
+    if (!event.target.closest) return;
+    // Links inside the open card must not re-trigger it.
+    if (card && card.contains(event.target)) return;
+
+    let trigger = event.target.closest('[data-hovercard-url]');
+    if (!trigger && cardStyle === 'react') {
+      // The rewritten surfaces trigger from plain profile links.
+      const link = event.target.closest('a[href]');
+      if (link && usernameFromUrl(link.getAttribute('href'))) trigger = link;
+    }
     if (!trigger) return;
+
     clearTimeout(cardTimer);
     cardTimer = setTimeout(() => showCard(trigger), 200);
   });
 
   document.addEventListener('mouseout', (event) => {
-    const trigger = event.target.closest && event.target.closest('[data-hovercard-url]');
+    const trigger = event.target.closest && event.target.closest('[data-hovercard-url], a[href]');
     if (trigger) clearTimeout(cardTimer);
   });
 
