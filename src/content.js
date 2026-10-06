@@ -59,6 +59,14 @@
     '[data-testid="code-cell"]', // the same line, by the hook GitHub tests against
   ].join(',');
 
+  /** Fields a person types text into, as opposed to checkboxes and buttons. */
+  const TEXT_FIELD_SELECTOR = [
+    'input:not([type])',
+    'input[type="text"]',
+    'input[type="search"]',
+    'textarea',
+  ].join(',');
+
   /** Above this many queued roots it's cheaper to rescan the document once. */
   const FULL_RESCAN_THRESHOLD = 60;
 
@@ -110,10 +118,31 @@
     return (el.getAttribute('rel') || '').split(/\s+/).includes('me');
   }
 
+  /**
+   * The styled copy of a search field's text, laid over the field itself.
+   *
+   * GitHub's filter bars color each `author:` token by drawing the query a
+   * second time, character for character on top of a real input whose own
+   * text is transparent. The caret belongs to the input, so the copy has to
+   * stay exactly as wide as what was typed: rewriting a username in it pushed
+   * everything after it along, left the caret halfway through a word, and
+   * broke React's hold on the copy, which then drew the query twice.
+   *
+   * The copy is marked `aria-hidden` so a screen reader reads the query once,
+   * and sits beside the input it mirrors. Matching on that shape rather than
+   * a class name covers both the classic and the React filter bars.
+   */
+  function isInputMirror(el) {
+    if (el.getAttribute('aria-hidden') !== 'true') return false;
+    const parent = el.parentElement;
+    return Boolean(parent && parent.querySelector(TEXT_FIELD_SELECTOR));
+  }
+
   function isSkippableElement(el) {
     if (SKIP_TAGS.has(el.tagName)) return true;
     if (el.matches(SKIP_SELECTOR)) return true;
     if (isEditable(el)) return true;
+    if (isInputMirror(el)) return true;
     if (isRepoLink(el)) return true;
     if (isAccountLink(el)) return true;
     // Our own output — the guard that stops the observer looping on itself.

@@ -63,6 +63,7 @@ real damage:
 | Skipped | Why |
 | --- | --- |
 | `textarea`, `input`, `contenteditable`, `role="textbox"` | GitHub's comment box is a real editor. Rewriting it would change what you actually submit. |
+| The styled copy over a search field (`aria-hidden`, beside a text input) | Filter bars draw the query a second time over the real input to color its tokens. A longer name there pushes the text out of line with the caret. |
 | `code`, `pre`, `kbd`, `samp` | A username in a code block is usually part of a command or path, where a silent rewrite hands you a broken copy-paste. |
 | The file and blame views | Same reason, but they need their own rule: GitHub renders each source line as a plain `div`, so there is no `code` element to match on. Diff views need nothing extra — they do use a real `code` per line. |
 | Text containing a URL | Rewriting `https://github.com/u1069002` would make the visible text disagree with where the link goes. |
