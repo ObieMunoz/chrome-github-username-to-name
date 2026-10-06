@@ -11,13 +11,13 @@
   'use strict';
 
   const {
-    STORAGE_KEY,
     DEFAULT_SETTINGS,
     buildMatcher,
     looksLikeUrl,
     isRepoRootPath,
     coerceSettings,
   } = globalThis.GHUN;
+  const store = globalThis.GHUN_STORE;
 
   const CLASS = 'ghun-name';
   const SOURCE_CLASS = 'ghun-source';
@@ -78,6 +78,9 @@
   const queuedRoots = new Set();
   let flushScheduled = false;
 
+  /** The count the toolbar badge last heard, so an unchanged one isn't resent. */
+  let reportedCount = -1;
+
   // --- element filtering -----------------------------------------------------
 
   /**
@@ -96,7 +99,7 @@
    * keeps a repo named after its owner readable as itself.
    */
   function isRepoLink(el) {
-    return el.tagName === 'A' && isRepoRootPath(el.getAttribute('href') || '');
+    return el.tagName === 'A' && isRepoRootPath(el.getAttribute('href') || '', location.hostname);
   }
 
   /**
@@ -216,7 +219,7 @@
 
     matcher.lastIndex = 0;
     if (!matcher.test(text)) return false;
-    if (looksLikeUrl(text)) return false;
+    if (looksLikeUrl(text, location.hostname)) return false;
 
     const fragment = document.createDocumentFragment();
     let cursor = 0;
@@ -291,6 +294,25 @@
     if (spans.length) scope.normalize();
   }
 
+  // --- toolbar badge ---------------------------------------------------------
+
+  /** Tell the service worker how many names this page shows replaced. */
+  function reportCount() {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) return;
+
+    const count = settings.enabled ? document.querySelectorAll(`span.${CLASS}`).length : 0;
+    if (count === reportedCount) return;
+    reportedCount = count;
+
+    try {
+      // Rejects while the worker is restarting or after the extension reloads;
+      // the next change reports again.
+      Promise.resolve(chrome.runtime.sendMessage({ type: 'ghun:count', count })).catch(() => {});
+    } catch {
+      /* the extension context is gone */
+    }
+  }
+
   // --- mutation handling -----------------------------------------------------
 
   function flush() {
@@ -302,9 +324,10 @@
 
     if (roots.length > FULL_RESCAN_THRESHOLD) {
       scan(document.body);
-      return;
+    } else {
+      for (const root of roots) scan(root);
     }
-    for (const root of roots) scan(root);
+    reportCount();
   }
 
   function queueRoot(node) {
@@ -397,6 +420,7 @@
 
     restoreAll();
     if (settings.enabled && matcher) scan(document.body);
+    reportCount();
   }
 
   /**
@@ -421,18 +445,23 @@
   function start() {
     if (!isContextAlive()) return;
 
-    chrome.storage.sync.get(STORAGE_KEY, (result) => {
-      if (chrome.runtime.lastError) return;
-      applySettings(result[STORAGE_KEY], { rescan: false });
-      if (settings.enabled && matcher) scan(document.body);
-      startObserver();
-      watchColor();
-    });
+    store.load(chrome.storage.sync).then(
+      (stored) => {
+        applySettings(stored, { rescan: false });
+        if (settings.enabled && matcher) scan(document.body);
+        reportCount();
+        startObserver();
+        watchColor();
+      },
+      () => {}
+    );
 
+    // A save spans several items, so any one of them changing means re-reading
+    // the lot rather than trusting the one that changed.
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'sync' || !changes[STORAGE_KEY]) return;
+      if (area !== 'sync' || !Object.keys(changes).some(store.isStoreKey)) return;
       if (!isContextAlive()) return shutdown();
-      applySettings(changes[STORAGE_KEY].newValue);
+      store.load(chrome.storage.sync).then((stored) => applySettings(stored), () => {});
     });
 
     // Turbo can swap the whole body at once; the observers catch that, but a
@@ -442,8 +471,20 @@
     document.addEventListener('turbo:load', () => {
       applyColor();
       scan(document.body);
+      reportCount();
     });
-    document.addEventListener('turbo:frame-load', (event) => scan(event.target));
+    document.addEventListener('turbo:frame-load', (event) => {
+      scan(event.target);
+      reportCount();
+    });
+
+    // Chrome clears a tab's badge when it navigates, and a page restored from
+    // the back-forward cache is a navigation that runs none of the above.
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      reportedCount = -1;
+      reportCount();
+    });
   }
 
   // Exposed for hovercard.js, the test suite, and the offline demo page.

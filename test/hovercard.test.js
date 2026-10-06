@@ -8,6 +8,7 @@ const { JSDOM } = require('jsdom');
 
 const read = (file) => fs.readFileSync(path.join(__dirname, '..', 'src', file), 'utf8');
 const COMMON_SRC = read('common.js');
+const STORE_SRC = read('store.js');
 const CONTENT_SRC = read('content.js');
 const HOVERCARD_SRC = read('hovercard.js');
 
@@ -19,27 +20,25 @@ const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 const plain = (object) => ({ ...object });
 
-function setup({ mappings = {} } = {}) {
+function setup({ mappings = {}, failWrites = null, url = 'https://github.com/' } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
     runScripts: 'outside-only',
+    url,
   });
   const { window } = dom;
-  const store = { ghun: { enabled: true, mappings } };
+  const items = { ghun: { enabled: true, mappings } };
 
-  // content.js uses the callback form, hovercard.js the promise form.
   window.chrome = {
     runtime: { id: 'test-extension', lastError: null },
     storage: {
       sync: {
-        get(key, callback) {
-          const value = { [key]: store[key] };
-          if (typeof callback === 'function') return callback(value);
-          return Promise.resolve(value);
+        get: async () => JSON.parse(JSON.stringify(items)),
+        async set(next) {
+          if (failWrites) throw new Error(failWrites);
+          Object.assign(items, JSON.parse(JSON.stringify(next)));
         },
-        set(items, callback) {
-          Object.assign(store, items);
-          if (typeof callback === 'function') callback();
-          return Promise.resolve();
+        async remove(keys) {
+          for (const key of [].concat(keys)) delete items[key];
         },
       },
       onChanged: { addListener() {} },
@@ -47,10 +46,12 @@ function setup({ mappings = {} } = {}) {
   };
 
   window.eval(COMMON_SRC);
+  window.eval(STORE_SRC);
   window.eval(CONTENT_SRC);
   window.eval(HOVERCARD_SRC);
 
-  return { window, store };
+  const stored = () => window.GHUN.unpackSettings(items);
+  return { window, items, stored };
 }
 
 function hover(window, element) {
@@ -62,7 +63,7 @@ function click(window, element) {
 }
 
 /** Mimic GitHub: hover a trigger, then the card is injected asynchronously. */
-async function showHovercard(window, hovercardUrl) {
+async function showHovercard(window, hovercardUrl, { body = '<p>Bio goes here</p>' } = {}) {
   const trigger = window.document.createElement('a');
   trigger.setAttribute('href', '/someone');
   trigger.setAttribute('data-hovercard-url', hovercardUrl);
@@ -71,7 +72,7 @@ async function showHovercard(window, hovercardUrl) {
 
   const card = window.document.createElement('div');
   card.className = 'js-hovercard-content';
-  card.innerHTML = '<div class="Popover-message"><p>Bio goes here</p></div>';
+  card.innerHTML = `<div class="Popover-message">${body}</div>`;
   window.document.body.appendChild(card);
 
   await tick();
@@ -90,6 +91,7 @@ test('adds a row to the user hovercard', async () => {
 
 test('shows the existing name when one is already mapped', async () => {
   const { window } = setup({ mappings: { u1069002: 'Obie Munoz' } });
+  await tick();
   const card = await showHovercard(window, '/users/u1069002/hovercard');
 
   assert.match(card.querySelector('.ghun-card-row').textContent, /Showing as “Obie Munoz”/);
@@ -152,7 +154,7 @@ test('anchors itself inline so a missing stylesheet cannot drop it into page flo
 });
 
 test('saving writes the mapping to storage', async () => {
-  const { window, store } = setup();
+  const { window, stored } = setup();
   const card = await showHovercard(window, '/users/u1069002/hovercard');
 
   click(window, card.querySelector('.ghun-card-button'));
@@ -161,12 +163,12 @@ test('saving writes the mapping to storage', async () => {
   click(window, panel.querySelector('.ghun-panel-save'));
   await tick();
 
-  assert.equal(store.ghun.mappings.u1069002, 'Obie Munoz');
+  assert.equal(stored().mappings.u1069002, 'Obie Munoz');
   assert.equal(window.document.getElementById('ghun-panel'), null);
 });
 
 test('saving preserves mappings added elsewhere in the meantime', async () => {
-  const { window, store } = setup({ mappings: { octocat: 'The Octocat' } });
+  const { window, items, stored } = setup({ mappings: { octocat: 'The Octocat' } });
   const card = await showHovercard(window, '/users/u1069002/hovercard');
 
   click(window, card.querySelector('.ghun-card-button'));
@@ -174,11 +176,11 @@ test('saving preserves mappings added elsewhere in the meantime', async () => {
   panel.querySelector('.ghun-panel-input').value = 'Obie Munoz';
 
   // A concurrent write from the popup lands before we commit.
-  store.ghun = { enabled: true, mappings: { octocat: 'The Octocat', hubot: 'Hubot' } };
+  items.ghun = { enabled: true, mappings: { octocat: 'The Octocat', hubot: 'Hubot' } };
   click(window, panel.querySelector('.ghun-panel-save'));
   await tick();
 
-  assert.deepEqual(plain(store.ghun.mappings), {
+  assert.deepEqual(plain(stored().mappings), {
     octocat: 'The Octocat',
     hubot: 'Hubot',
     u1069002: 'Obie Munoz',
@@ -201,14 +203,161 @@ test('relabels the open hovercard row after saving', async () => {
 });
 
 test('Remove clears an existing mapping', async () => {
-  const { window, store } = setup({ mappings: { u1069002: 'Obie Munoz' } });
+  const { window, stored } = setup({ mappings: { u1069002: 'Obie Munoz' } });
   const card = await showHovercard(window, '/users/u1069002/hovercard');
 
   click(window, card.querySelector('.ghun-card-button'));
   click(window, window.document.getElementById('ghun-panel').querySelector('.ghun-panel-remove'));
   await tick();
 
-  assert.deepEqual(plain(store.ghun.mappings), {});
+  assert.deepEqual(plain(stored().mappings), {});
+});
+
+test('saves in the chunked format, leaving the old single item behind', async () => {
+  const { window, items } = setup({ mappings: { octocat: 'The Octocat' } });
+  const card = await showHovercard(window, '/users/u1069002/hovercard');
+
+  click(window, card.querySelector('.ghun-card-button'));
+  const panel = window.document.getElementById('ghun-panel');
+  panel.querySelector('.ghun-panel-input').value = 'Obie Munoz';
+  click(window, panel.querySelector('.ghun-panel-save'));
+  await tick();
+
+  assert.equal('mappings' in items.ghun, false);
+  assert.deepEqual(plain(items['ghun.m.0']), { octocat: 'The Octocat', u1069002: 'Obie Munoz' });
+});
+
+test('a failed save keeps the panel open and says why', async () => {
+  const { window } = setup({ failWrites: 'QUOTA_BYTES quota exceeded' });
+  const card = await showHovercard(window, '/users/u1069002/hovercard');
+
+  click(window, card.querySelector('.ghun-card-button'));
+  const panel = window.document.getElementById('ghun-panel');
+  panel.querySelector('.ghun-panel-input').value = 'Obie Munoz';
+  click(window, panel.querySelector('.ghun-panel-save'));
+  await tick();
+
+  assert.equal(window.document.getElementById('ghun-panel'), panel);
+  assert.equal(panel.querySelector('.ghun-panel-input').value, 'Obie Munoz');
+  assert.match(panel.querySelector('.ghun-panel-error').textContent, /storage is full/i);
+  assert.match(card.querySelector('.ghun-card-row').textContent, /Show as a real name/);
+});
+
+test('a failed save reports errors other than a full store as they are', async () => {
+  const { window } = setup({ failWrites: 'MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded' });
+  const card = await showHovercard(window, '/users/u1069002/hovercard');
+
+  click(window, card.querySelector('.ghun-card-button'));
+  const panel = window.document.getElementById('ghun-panel');
+  panel.querySelector('.ghun-panel-input').value = 'Obie Munoz';
+  click(window, panel.querySelector('.ghun-panel-save'));
+  await tick();
+
+  assert.match(panel.querySelector('.ghun-panel-error').textContent, /MAX_WRITE_OPERATIONS_PER_MINUTE/);
+});
+
+test('fills the editor with the profile name the card shows', async () => {
+  const { window } = setup();
+  const card = await showHovercard(window, '/users/u1069002/hovercard', {
+    body: '<a href="/u1069002"><img alt="@u1069002"></a>' +
+      '<a href="/u1069002">Obie Munoz</a> <a href="/u1069002">u1069002</a>',
+  });
+
+  click(window, card.querySelector('.ghun-card-button'));
+
+  const input = window.document.querySelector('#ghun-panel .ghun-panel-input');
+  assert.equal(input.value, 'Obie Munoz');
+  assert.equal(input.selectionStart, 0);
+  assert.equal(input.selectionEnd, 'Obie Munoz'.length);
+});
+
+test('prefers the name already mapped over the profile name', async () => {
+  const { window } = setup({ mappings: { u1069002: 'Obie' } });
+  await tick();
+  const card = await showHovercard(window, '/users/u1069002/hovercard', {
+    body: '<a href="/u1069002">Obie Munoz</a> <a href="/u1069002">u1069002</a>',
+  });
+
+  click(window, card.querySelector('.ghun-card-button'));
+
+  assert.equal(window.document.querySelector('#ghun-panel .ghun-panel-input').value, 'Obie');
+});
+
+test('leaves the editor empty when the profile has no name of its own', async () => {
+  const { window } = setup();
+  const card = await showHovercard(window, '/users/u1069002/hovercard', {
+    body: '<a href="/u1069002">u1069002</a> <a href="/u1069002">@U1069002</a> <a href="/octocat">The Octocat</a>',
+  });
+
+  click(window, card.querySelector('.ghun-card-button'));
+
+  assert.equal(window.document.querySelector('#ghun-panel .ghun-panel-input').value, '');
+});
+
+test('fills the editor from a React card in the portal', async () => {
+  const { window } = setup();
+  hoverProfileLink(window, '/u1069002');
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML = '<div><a href="/u1069002">Obie Munoz</a><a href="/u1069002">u1069002</a></div>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  click(window, overlay.querySelector('.ghun-card-button'));
+
+  assert.equal(window.document.querySelector('#ghun-panel .ghun-panel-input').value, 'Obie Munoz');
+});
+
+test('Remove offers an undo that puts the name back', async () => {
+  const { window, stored } = setup({ mappings: { u1069002: 'Obie Munoz' } });
+  await tick();
+  const card = await showHovercard(window, '/users/u1069002/hovercard');
+
+  click(window, card.querySelector('.ghun-card-button'));
+  click(window, window.document.getElementById('ghun-panel').querySelector('.ghun-panel-remove'));
+  await tick();
+
+  const toast = window.document.getElementById('ghun-toast');
+  assert.ok(toast, 'expected an undo toast');
+  assert.equal(toast.parentElement, window.document.body);
+  assert.match(toast.textContent, /u1069002/);
+
+  click(window, toast.querySelector('.ghun-toast-undo'));
+  await tick();
+
+  assert.equal(stored().mappings.u1069002, 'Obie Munoz');
+  assert.equal(window.document.getElementById('ghun-toast'), null);
+  assert.match(card.querySelector('.ghun-card-row').textContent, /Showing as “Obie Munoz”/);
+});
+
+test('the undo toast is excluded from username replacement', async () => {
+  const { window } = setup({ mappings: { u1069002: 'Obie Munoz', octocat: 'The Octocat' } });
+  await tick();
+  const card = await showHovercard(window, '/users/octocat/hovercard');
+
+  click(window, card.querySelector('.ghun-card-button'));
+  click(window, window.document.getElementById('ghun-panel').querySelector('.ghun-panel-remove'));
+  await tick();
+
+  const toast = window.document.getElementById('ghun-toast');
+  assert.ok(toast.hasAttribute('data-ghun-ui'));
+  assert.equal(toast.style.position, 'fixed');
+});
+
+test('the panel copies the raw username', async () => {
+  const { window } = setup();
+  const copied = [];
+  Object.defineProperty(window.navigator, 'clipboard', {
+    value: { writeText: async (text) => copied.push(text) },
+  });
+  const card = await showHovercard(window, '/users/u1069002/hovercard');
+
+  click(window, card.querySelector('.ghun-card-button'));
+  const copy = window.document.querySelector('#ghun-panel .ghun-panel-copy');
+  click(window, copy);
+  await tick();
+
+  assert.deepEqual(copied, ['u1069002']);
+  assert.match(copy.textContent, /Copied/);
 });
 
 test('the panel is excluded from username replacement', async () => {
@@ -383,7 +532,7 @@ test('an annotated org trigger suppresses the portal fallback too', async () => 
 });
 
 test('a portal row opens the same editor panel', async () => {
-  const { window, store } = setup();
+  const { window, stored } = setup();
   const overlay = await showPortalHovercard(window, 'u1069002');
 
   click(window, overlay.querySelector('.ghun-card-button'));
@@ -394,8 +543,30 @@ test('a portal row opens the same editor panel', async () => {
   click(window, panel.querySelector('.ghun-panel-save'));
   await tick();
 
-  assert.equal(store.ghun.mappings.u1069002, 'Obie Munoz');
+  assert.equal(stored().mappings.u1069002, 'Obie Munoz');
   assert.match(overlay.querySelector('.ghun-card-row').textContent, /Showing as “Obie Munoz”/);
+});
+
+test('enhances a React card on an Enterprise host, where links are absolute', async () => {
+  const { window } = setup({ url: 'https://github.example.com/' });
+  hoverProfileLink(window, 'https://github.example.com/u1069002');
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML =
+    '<div><a href="https://github.example.com/u1069002">Obie Munoz</a>' +
+    '<a href="https://github.example.com/u1069002">u1069002</a></div>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  click(window, overlay.querySelector('.ghun-card-button'));
+  assert.equal(window.document.querySelector('#ghun-panel .ghun-panel-input').value, 'Obie Munoz');
+});
+
+test('reads an absolute hovercard URL on an Enterprise host', async () => {
+  const { window } = setup({ url: 'https://github.example.com/' });
+  const card = await showHovercard(window, 'https://github.example.com/users/u1069002/hovercard');
+
+  assert.equal(card.querySelector('.ghun-card-row').dataset.ghunFor, 'u1069002');
 });
 
 test('keeps enhancing after soft navigation swaps the whole <body>', async () => {

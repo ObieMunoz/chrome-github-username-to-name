@@ -1,6 +1,5 @@
 /*
- * The highlight color, in two variants, plus the defaults they fall back to
- * before the content script has read the user's pick out of storage.
+ * The shipped highlight color, in two variants, used until the user picks one.
  *
  * Two are needed because one color cannot serve both themes: neon #39ff14
  * measures 1.36:1 against GitHub's white background — unreadable — while
@@ -8,10 +7,10 @@
  * 4.57:1, which clears WCAG AA and still reads unmistakably as "this was
  * rewritten".
  *
- * A custom color is picked once, for whichever theme the user is in; content.js
- * derives the other variant and sets both properties on <html>. Choosing between
- * them stays a pure CSS decision, resolved once into --ghun-color by the cascade
- * below so that nothing further down has to repeat it.
+ * A color the user picks is one color, used on both themes: content.js sets it
+ * as --ghun-color inline on <html>, which outranks the whole cascade below.
+ * Until then, choosing between the two defaults stays a pure CSS decision,
+ * resolved once into --ghun-color so that nothing further down repeats it.
  */
 :root {
   --ghun-color-dark: #39ff14;
@@ -155,8 +154,16 @@ html[data-color-mode='dark'] {
   font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
-#ghun-panel .ghun-panel-title {
+#ghun-panel .ghun-panel-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
   margin-bottom: 8px;
+}
+
+#ghun-panel .ghun-panel-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   color: var(--fgColor-muted, var(--color-fg-muted, #8b949e));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -208,4 +215,43 @@ html[data-color-mode='dark'] {
 
 #ghun-panel .ghun-panel-remove {
   color: var(--fgColor-danger, var(--color-danger-fg, #f85149));
+}
+
+#ghun-panel .ghun-panel-copy {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+#ghun-panel .ghun-panel-error {
+  margin-top: 8px;
+  color: var(--fgColor-danger, var(--color-danger-fg, #f85149));
+  font-size: 12px;
+}
+
+#ghun-toast {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  max-width: 360px;
+  padding: 10px 12px;
+  border: 1px solid var(--borderColor-default, var(--color-border-default, #30363d));
+  border-radius: 8px;
+  background: var(--bgColor-default, var(--color-canvas-overlay, #161b22));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: var(--fgColor-default, var(--color-fg-default, #e6edf3));
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+#ghun-toast .ghun-toast-undo {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--ghun-color) 45%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ghun-color) 14%, transparent);
+  color: var(--ghun-color);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }

@@ -25,15 +25,33 @@ There is no build step — the folder is the extension.
 instead, hit Add. Changes apply to open GitHub tabs immediately; no reload.
 
 **Add one from the page:** hover any username to bring up GitHub's own profile
-card — it now carries a **Show as a real name…** row at the bottom. Click it,
-type the name, press Enter. The page repaints everywhere at once.
+card — it now carries a **Show as a real name…** row at the bottom. Click it and
+the editor opens with the name from that person's GitHub profile already filled
+in, so Enter is usually all it takes. The page repaints everywhere at once.
 
 Once mapped, that row reads **Showing as "…"** and offers Remove, so the
-hovercard doubles as the edit surface.
+hovercard doubles as the edit surface. The editor also has a **Copy** button for
+the raw username.
+
+**Add everyone on a page:** open **Add from this page** in the popup. It lists
+every person the current GitHub tab links to who doesn't have a name yet, with
+the name from each profile filled in and ticked. Untick anyone you'd rather
+leave out, fill in the blanks, and hit **Add selected**. An organization's
+**People** page or a busy pull request is the quick way to cover a whole team.
+Profiles are read with your own GitHub session, so this sees members only you
+can see, and needs no token. It reads at most 100 profiles at a time.
+
+**Undo a removal:** removing a name, from the popup or from a hovercard, offers
+**Undo** for a few seconds.
 
 **Pause everything:** the switch in the popup header turns all replacement off
 without deleting anything — handy when you need to read a page as it really is,
-or screenshot it for someone else.
+or screenshot it for someone else. **Alt+Shift+U** does the same without
+opening the popup; change it at `chrome://extensions/shortcuts`. While paused,
+the toolbar icon's badge reads **off**.
+
+**See what changed:** otherwise the badge shows how many names on the current
+tab were replaced.
 
 **Copy, quote and reply as normal:** the name is drawn over the username rather
 than written in place of it, so copying a comment — or using GitHub's **Quote
@@ -54,6 +72,15 @@ paste JSON into the bottom box and hit **Import** to merge it back in. Anything
 already mapped needs a second Import click before it is overwritten. No files
 change hands either way, and both are stored in `chrome.storage.sync` regardless,
 so they follow your Chrome profile across machines on their own.
+
+The same settings open from **Options** on the extension's card in
+`chrome://extensions`.
+
+**GitHub Enterprise:** open **GitHub Enterprise** in the popup and add your
+server's host, e.g. `github.example.com`. Chrome asks once for access to that
+host, and names are replaced there exactly as on github.com. Tabs already open
+on it need a reload. Remove a host from the same list, or by revoking its access
+in `chrome://extensions`; either way it stops being served.
 
 ## What it deliberately does not touch
 
@@ -95,6 +122,25 @@ reference like `ObieMunoz/site#12`. A breadcrumb spaces its slash out
 (`ObieMunoz / obiemunoz.com`), so the owner there is still read as a person.
 
 ## How it works
+
+### Storage
+
+Everything lives in `chrome.storage.sync`, which caps any one item at 8KB.
+With every name in one item that was a ceiling of a couple of hundred names, so
+`src/store.js` spreads the names over as many items as they need (`ghun.m.0`,
+`ghun.m.1`, …), each filled to just under the cap, beside a `ghun` item holding
+the switch, the color and how many of those items there are. The ceiling is now
+sync's 100KB total, a couple of thousand names.
+
+A save writes every item in one `set`, so nothing ever reads half of one; items
+a smaller save no longer needs are removed afterwards, and until then the count
+in `ghun` tells readers to skip them. The old single-item format is still read,
+and the first save after an update rewrites it in the new one.
+
+When sync does fill up, the popup and the hovercard editor both say so, and the
+editor stays open with what you typed.
+
+### The page
 
 `src/content.js` walks text nodes with a `TreeWalker`, pruning skipped subtrees
 outright, and wraps each match in
@@ -200,14 +246,34 @@ the wheel to match rather than letting the two disagree.
 Only the hex is stored. Everything else — the two previews, the ratios — is
 recomputed from it.
 
+### The service worker
+
+`src/background.js` keeps the toolbar badge (each tab reports its own count;
+"off" is the global text underneath, which every tab shows once paused at zero),
+handles the pause shortcut, and registers the content scripts for Enterprise
+hosts.
+
+The hosts you have granted are the only record of which hosts were added: there
+is no list in storage to drift out of step with them. On install, on startup and
+on every permission change the worker rebuilds one dynamic content-script
+registration from the granted hosts, with the same files the manifest injects
+on github.com. A test holds the two lists to each other.
+
+Every helper that reads a link takes the page's own host, so profile links,
+repo links and hovercard URLs read the same on `github.example.com` as on
+`github.com`.
+
 ## Layout
 
 ```
 manifest.json          MV3 manifest
 src/common.js          shared helpers — matcher, validation, import parsing, color maths
+src/store.js           reads and writes settings as chunked sync items
 src/content.js         the text-walking engine
 src/content.css        the highlight styling and injected UI
 src/hovercard.js       the "Show as a real name…" row and its editor panel
+src/collect.js         finds the people a page links to, for "Add from this page"
+src/background.js      the badge, the pause shortcut, and Enterprise host scripts
 src/popup.*            the management UI
 test/                  node:test + jsdom
 demo/                  offline stand-in page for checking styling and skip rules
@@ -271,7 +337,15 @@ which would destroy an inline form mid-typing. Its position and z-index are set
 inline rather than in CSS, so a stale or missing stylesheet can't drop it into
 normal page flow.
 
+### Notes on the profile name
+
+The editor's pre-filled name comes from the card itself: both card
+implementations show the profile name and the login as two links to the same
+profile, so the name is the text of a link back to that user that isn't just
+their login. **Add from this page** fetches each profile instead and reads its
+`vcard-fullname` (or `itemprop="name"`), markup GitHub keeps for search engines
+rather than for styling. A profile with no name of its own fills in nothing.
+
 ## Scope
 
-github.com only. Adding a GitHub Enterprise host means adding it to
-`host_permissions` and the `content_scripts` match list in `manifest.json`.
+github.com, plus any GitHub Enterprise Server host you add from the popup.

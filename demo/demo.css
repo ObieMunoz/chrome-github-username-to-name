@@ -205,10 +205,6 @@ textarea,
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
-.mock-react-overlay .mock-login {
-  color: inherit;
-  text-decoration: none;
-}
 
 .mock-head {
   display: flex;
@@ -224,8 +220,23 @@ textarea,
   background: linear-gradient(135deg, #3b4553, #202832);
 }
 
-.mock-login {
+.mock-names {
+  display: flex;
+  flex-direction: column;
+}
+
+.mock-names a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mock-name {
   font-weight: 600;
+}
+
+.mock-login {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .mock-bio {

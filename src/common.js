@@ -8,8 +8,19 @@
 (function (root) {
   'use strict';
 
-  /** Single storage key holding the whole settings object. */
+  /** Storage key holding the settings, and the count of mapping chunks beside it. */
   const STORAGE_KEY = 'ghun';
+
+  /** Mappings are spread over `ghun.m.0`, `ghun.m.1`, … so no one item hits the cap. */
+  const CHUNK_PREFIX = 'ghun.m.';
+
+  /**
+   * chrome.storage.sync refuses any item over 8192 bytes, counted as the key
+   * plus the value's JSON. With the whole map in one item that capped the
+   * extension at a couple of hundred names, so each chunk is filled to just
+   * under the cap instead, and the limit becomes sync's 100KB total.
+   */
+  const ITEM_BYTE_BUDGET = 8000;
 
   const DEFAULT_SETTINGS = {
     enabled: true,
@@ -116,27 +127,38 @@
   }
 
   /**
-   * True for text that is (or contains) a URL, where rewriting the visible text
-   * would make a link disagree with where it actually points.
+   * The helpers below that read links take the host the page is served from, so
+   * they work the same on a GitHub Enterprise host. Content scripts pass
+   * `location.hostname`; anything empty means github.com.
    */
-  function looksLikeUrl(text) {
-    return text.includes('://') || /\bgithub\.com\//i.test(text);
-  }
+  const DEFAULT_HOST = 'github.com';
 
-  /**
-   * Pull a username out of a profile link. Only single-segment github.com paths
-   * count, so `/owner/repo` and `/features` are both rejected.
-   *
-   * @returns {string|null} the username in its original case.
-   */
-  function usernameFromUrl(url) {
-    let parsed;
+  function resolveUrl(url, host) {
     try {
-      parsed = new URL(String(url), 'https://github.com');
+      return new URL(String(url), `https://${host || DEFAULT_HOST}`);
     } catch {
       return null;
     }
-    if (parsed.hostname && parsed.hostname !== 'github.com') return null;
+  }
+
+  /**
+   * True for text that is (or contains) a URL, where rewriting the visible text
+   * would make a link disagree with where it actually points.
+   */
+  function looksLikeUrl(text, host) {
+    if (text.includes('://') || /\bgithub\.com\//i.test(text)) return true;
+    return Boolean(host) && text.toLowerCase().includes(`${host.toLowerCase()}/`);
+  }
+
+  /**
+   * Pull a username out of a profile link. Only single-segment paths on the
+   * page's own host count, so `/owner/repo` and `/features` are both rejected.
+   *
+   * @returns {string|null} the username in its original case.
+   */
+  function usernameFromUrl(url, host) {
+    const parsed = resolveUrl(url, host);
+    if (!parsed || parsed.hostname !== (host || DEFAULT_HOST)) return null;
 
     const segments = parsed.pathname.split('/').filter(Boolean);
     if (segments.length !== 1) return null;
@@ -156,14 +178,9 @@
    * `/owner` stays replaceable, and deeper paths like `/owner/repo/pull/12` are
    * page titles that may legitimately mention someone.
    */
-  function isRepoRootPath(url) {
-    let parsed;
-    try {
-      parsed = new URL(String(url), 'https://github.com');
-    } catch {
-      return false;
-    }
-    if (parsed.hostname && parsed.hostname !== 'github.com') return false;
+  function isRepoRootPath(url, host) {
+    const parsed = resolveUrl(url, host);
+    if (!parsed || parsed.hostname !== (host || DEFAULT_HOST)) return false;
 
     const segments = parsed.pathname.split('/').filter(Boolean);
     if (segments.length !== 2) return false;
@@ -182,16 +199,11 @@
    *
    * @returns {string|null} the username in its original case.
    */
-  function usernameFromHovercardUrl(url) {
+  function usernameFromHovercardUrl(url, host) {
     let path = String(url || '');
     if (path.includes('://')) {
-      let parsed;
-      try {
-        parsed = new URL(path);
-      } catch {
-        return null;
-      }
-      if (parsed.hostname !== 'github.com') return null;
+      const parsed = resolveUrl(path, host);
+      if (!parsed || parsed.hostname !== (host || DEFAULT_HOST)) return null;
       path = parsed.pathname;
     }
 
@@ -200,6 +212,56 @@
 
     const candidate = decodeURIComponent(match[1]);
     return isValidUsername(candidate) ? candidate : null;
+  }
+
+  /** One DNS label: letters, digits and inner hyphens. */
+  const HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
+
+  /**
+   * Turn what someone typed into the hostname of a GitHub Enterprise server.
+   * A pasted URL is reduced to its host. github.com is built in, and only https
+   * is served, so both are refused rather than silently changed.
+   *
+   * @returns {string|null}
+   */
+  function normalizeHost(input) {
+    let text = String(input == null ? '' : input).trim().toLowerCase();
+    if (!text) return null;
+    if (/^[a-z][a-z0-9+.-]*:\/\//.test(text)) {
+      if (!text.startsWith('https://')) return null;
+    } else {
+      text = `https://${text}`;
+    }
+
+    const parsed = resolveUrl(text);
+    if (!parsed) return null;
+    const host = parsed.hostname;
+    if (!HOST_RE.test(host)) return null;
+    if (host === DEFAULT_HOST || host.endsWith(`.${DEFAULT_HOST}`)) return null;
+    return host;
+  }
+
+  function hostPattern(host) {
+    return `https://${host}/*`;
+  }
+
+  /** The Enterprise hosts among granted origins, sorted, without github.com or wildcards. */
+  function customHosts(origins) {
+    const hosts = new Set();
+    for (const origin of origins || []) {
+      const match = /^https:\/\/([^/*]+)\/\*$/.exec(origin);
+      if (match && match[1] !== DEFAULT_HOST) hosts.add(match[1]);
+    }
+    return Array.from(hosts).sort();
+  }
+
+  /**
+   * Toolbar badge text for a count of replaced names. Null clears a tab's own
+   * text so the badge falls back to the global one, which is how "off" shows.
+   */
+  function badgeText(count) {
+    if (!(count > 0)) return null;
+    return count > 999 ? '999+' : String(count);
   }
 
   /* --- color ---------------------------------------------------------------
@@ -339,6 +401,77 @@
     };
   }
 
+  /** UTF-8 length, which is what the storage quota counts. */
+  function byteLength(text) {
+    let bytes = 0;
+    for (const char of text) {
+      const code = char.codePointAt(0);
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+    }
+    return bytes;
+  }
+
+  /**
+   * Lay settings out as the storage items they are saved as: the settings item,
+   * naming how many chunks follow, and the chunks themselves.
+   */
+  function packSettings(settings) {
+    const chunks = [];
+    let current = {};
+    // Room for the braces and the longest chunk key there will realistically be.
+    const overhead = 2 + CHUNK_PREFIX.length + 6;
+    let size = overhead;
+
+    for (const username of Object.keys(settings.mappings).sort()) {
+      const replacement = settings.mappings[username];
+      const entry = byteLength(`${JSON.stringify(username)}:${JSON.stringify(replacement)},`);
+      if (size + entry > ITEM_BYTE_BUDGET && size > overhead) {
+        chunks.push(current);
+        current = {};
+        size = overhead;
+      }
+      current[username] = replacement;
+      size += entry;
+    }
+    if (size > overhead) chunks.push(current);
+
+    const items = {
+      [STORAGE_KEY]: { enabled: settings.enabled, color: settings.color, chunks: chunks.length },
+    };
+    chunks.forEach((chunk, index) => {
+      items[`${CHUNK_PREFIX}${index}`] = chunk;
+    });
+    return items;
+  }
+
+  /**
+   * Reassemble settings from stored items. Chunks beyond the count the settings
+   * item names are leftovers from a larger save and are ignored. The old format,
+   * with every mapping inside the settings item, is still read.
+   */
+  function unpackSettings(items) {
+    const source = items || {};
+    const meta = source[STORAGE_KEY] && typeof source[STORAGE_KEY] === 'object' ? source[STORAGE_KEY] : {};
+    const mappings = { ...(meta.mappings && typeof meta.mappings === 'object' ? meta.mappings : {}) };
+
+    const count = Number.isInteger(meta.chunks) ? meta.chunks : 0;
+    for (let index = 0; index < count; index += 1) {
+      const chunk = source[`${CHUNK_PREFIX}${index}`];
+      if (chunk && typeof chunk === 'object') Object.assign(mappings, chunk);
+    }
+
+    return coerceSettings({ enabled: meta.enabled, color: meta.color, mappings });
+  }
+
+  /** A refused storage write, put the way someone deciding what to do next needs it. */
+  function describeSaveError(error) {
+    const message = String((error && error.message) || error);
+    if (/QUOTA_BYTES/.test(message)) {
+      return 'Chrome sync storage is full. Remove a few names to make room.';
+    }
+    return `Could not save: ${message}`;
+  }
+
   /**
    * Read pasted JSON back into a mappings object.
    * Accepts both the wrapped export format and a bare `{username: name}` map.
@@ -382,6 +515,8 @@
 
   root.GHUN = {
     STORAGE_KEY,
+    CHUNK_PREFIX,
+    ITEM_BYTE_BUDGET,
     DEFAULT_SETTINGS,
     DEFAULT_COLOR,
     THEME_BACKGROUNDS,
@@ -395,6 +530,10 @@
     usernameFromUrl,
     isRepoRootPath,
     usernameFromHovercardUrl,
+    normalizeHost,
+    hostPattern,
+    customHosts,
+    badgeText,
     parseHex,
     toHex,
     normalizeHex,
@@ -403,6 +542,9 @@
     contrastRatio,
     coerceColor,
     coerceSettings,
+    packSettings,
+    unpackSettings,
+    describeSaveError,
     parseImport,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

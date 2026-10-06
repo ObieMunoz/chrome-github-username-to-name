@@ -5,42 +5,51 @@
 (function () {
   'use strict';
 
-  const { STORAGE_KEY } = globalThis.GHUN;
+  const { packSettings, unpackSettings } = globalThis.GHUN;
+  const store = globalThis.GHUN_STORE;
 
-  let settings = {
+  const items = packSettings({
     enabled: true,
+    color: null,
     mappings: {
       u1069002: 'Obie Munoz',
       octocat: 'The Octocat',
     },
-  };
+  });
 
   const listeners = [];
+  const copy = (value) => JSON.parse(JSON.stringify(value));
+
+  function notify(changes) {
+    for (const listener of listeners) listener(changes, 'sync');
+  }
+
+  const sync = {
+    async get() {
+      return copy(items);
+    },
+    async set(next) {
+      const changes = {};
+      for (const [key, value] of Object.entries(next)) {
+        changes[key] = { oldValue: items[key], newValue: copy(value) };
+        items[key] = copy(value);
+      }
+      notify(changes);
+    },
+    async remove(keys) {
+      const changes = {};
+      for (const key of [].concat(keys)) {
+        changes[key] = { oldValue: items[key] };
+        delete items[key];
+      }
+      notify(changes);
+    },
+  };
 
   window.chrome = {
-    runtime: { id: 'demo-extension', lastError: null },
+    runtime: { id: 'demo-extension', lastError: null, sendMessage: async () => {} },
     storage: {
-      // Real chrome.storage supports both a callback and a promise; hovercard.js
-      // uses the promise form and content.js the callback form, so match both.
-      sync: {
-        get(key, callback) {
-          const value = { [key]: settings };
-          if (typeof callback === 'function') {
-            setTimeout(() => callback(value), 0);
-            return undefined;
-          }
-          return Promise.resolve(value);
-        },
-        set(items, callback) {
-          const oldValue = settings;
-          settings = items[STORAGE_KEY];
-          for (const listener of listeners) {
-            listener({ [STORAGE_KEY]: { newValue: settings, oldValue } }, 'sync');
-          }
-          if (typeof callback === 'function') callback();
-          return Promise.resolve();
-        },
-      },
+      sync,
       onChanged: {
         addListener(listener) {
           listeners.push(listener);
@@ -51,10 +60,10 @@
 
   window.__demo = {
     get settings() {
-      return settings;
+      return unpackSettings(items);
     },
     update(patch) {
-      window.chrome.storage.sync.set({ [STORAGE_KEY]: { ...settings, ...patch } });
+      return store.save(sync, { ...unpackSettings(items), ...patch });
     },
   };
 })();

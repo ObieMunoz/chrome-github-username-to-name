@@ -27,18 +27,22 @@
   'use strict';
 
   const {
-    STORAGE_KEY,
-    coerceSettings,
     usernameFromHovercardUrl,
     usernameFromUrl,
     normalizeUsername,
+    describeSaveError,
   } = globalThis.GHUN;
+  const store = globalThis.GHUN_STORE;
 
   const HOVERCARD_SELECTOR = '.js-hovercard-content';
   const PORTAL_ID = '__primerPortalRoot__';
   const ROW_CLASS = 'ghun-card-row';
   const OVERLAY_ROW_CLASS = 'ghun-card-overlay';
   const PANEL_ID = 'ghun-panel';
+  const TOAST_ID = 'ghun-toast';
+
+  /** Long enough to read the toast and reach its Undo, short enough not to linger. */
+  const TOAST_MS = 6000;
 
   /**
    * How long after a hover an appearing overlay can still be read as that
@@ -67,6 +71,8 @@
   let hovered = null;
   let pointerDownAt = 0;
   let panel = null;
+  let toast = null;
+  let toastTimer = null;
 
   // --- tracking which user the hovercard is about ----------------------------
 
@@ -78,17 +84,15 @@
 
       const annotated = target.closest('[data-hovercard-url]');
       if (annotated) {
-        hovered = {
-          username: usernameFromHovercardUrl(annotated.getAttribute('data-hovercard-url')),
-          at: Date.now(),
-        };
+        const url = annotated.getAttribute('data-hovercard-url');
+        hovered = { username: usernameFromHovercardUrl(url, location.hostname), at: Date.now() };
         return;
       }
 
       const link = target.closest('a[href]');
       if (!link || link.closest('[data-ghun-ui]')) return;
 
-      const username = usernameFromUrl(link.getAttribute('href'));
+      const username = usernameFromUrl(link.getAttribute('href'), location.hostname);
       // A non-profile link doesn't clear the state: the pointer crosses
       // plenty of other links on its way to a card that is still loading.
       if (username) hovered = { username, at: Date.now() };
@@ -117,16 +121,101 @@
   /**
    * Re-read before writing so a change made in the popup meanwhile isn't lost.
    * Saving triggers storage.onChanged, which makes the engine repaint the page.
+   *
+   * @returns {Promise<string>} the name this replaced, or '' if there was none.
+   * @throws when the write is refused, typically because sync storage is full.
    */
   async function persist(username, name) {
-    const stored = await chrome.storage.sync.get(STORAGE_KEY);
-    const settings = coerceSettings(stored[STORAGE_KEY]);
+    const key = normalizeUsername(username);
+    let previous = '';
+
+    await store.update(chrome.storage.sync, (settings) => {
+      previous = settings.mappings[key] || '';
+      if (name) settings.mappings[key] = name;
+      else delete settings.mappings[key];
+    });
+    return previous;
+  }
+
+  /**
+   * The name the card itself shows for this user, if they set one on their
+   * profile: the text of a link back to them that isn't just their login.
+   *
+   * Both card implementations render the name and the login as two links to
+   * the same profile, and that pairing is what this relies on rather than any
+   * class name. `textContent` reads the original text even where the engine
+   * has already drawn a replacement over part of it.
+   */
+  function profileName(container, username) {
+    if (!container) return '';
     const key = normalizeUsername(username);
 
-    if (name) settings.mappings[key] = name;
-    else delete settings.mappings[key];
+    for (const link of container.querySelectorAll('a[href]')) {
+      if (link.closest('[data-ghun-ui]')) continue;
+      const target = usernameFromUrl(link.getAttribute('href'), location.hostname);
+      if (!target || normalizeUsername(target) !== key) continue;
 
-    await chrome.storage.sync.set({ [STORAGE_KEY]: settings });
+      const text = link.textContent.replace(/\s+/g, ' ').trim();
+      if (text && normalizeUsername(text) !== key) return text;
+    }
+    return '';
+  }
+
+  // --- the undo toast --------------------------------------------------------
+
+  function closeToast() {
+    clearTimeout(toastTimer);
+    if (toast) {
+      toast.remove();
+      toast = null;
+    }
+  }
+
+  /**
+   * A short-lived note in the corner of the page, with an optional action.
+   * Like the panel, it is anchored inline so a missing stylesheet can't drop it
+   * into page flow.
+   */
+  function showToast(message, action) {
+    closeToast();
+
+    toast = document.createElement('div');
+    toast.id = TOAST_ID;
+    toast.setAttribute('data-ghun-ui', '');
+    toast.setAttribute('role', 'status');
+    toast.style.position = 'fixed';
+    toast.style.left = '16px';
+    toast.style.bottom = '16px';
+    toast.style.zIndex = '2147483647';
+
+    const text = document.createElement('span');
+    text.className = 'ghun-toast-text';
+    text.textContent = message;
+    toast.appendChild(text);
+
+    if (action) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'ghun-toast-undo';
+      button.textContent = action.label;
+      button.addEventListener('click', () => {
+        closeToast();
+        action.run();
+      });
+      toast.appendChild(button);
+    }
+
+    document.body.appendChild(toast);
+    toastTimer = setTimeout(closeToast, TOAST_MS);
+  }
+
+  async function restoreName(username, name) {
+    try {
+      await persist(username, name);
+      refreshRows(username, name);
+    } catch (error) {
+      showToast(describeSaveError(error));
+    }
   }
 
   // --- the editor panel ------------------------------------------------------
@@ -177,7 +266,7 @@
     panel.style.top = `${Math.round(top)}px`;
   }
 
-  function openPanel(username, anchorRect) {
+  function openPanel(username, anchorRect, { suggestion = '' } = {}) {
     closePanel();
 
     panel = document.createElement('div');
@@ -186,17 +275,42 @@
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', `Replacement name for ${username}`);
 
+    const head = document.createElement('div');
+    head.className = 'ghun-panel-head';
+
     const title = document.createElement('div');
     title.className = 'ghun-panel-title';
     title.textContent = username;
+
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'ghun-panel-copy';
+    copy.textContent = 'Copy';
+    copy.title = `Copy ${username}`;
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(username);
+        copy.textContent = 'Copied';
+      } catch {
+        copy.textContent = 'Copy failed';
+      }
+    });
+
+    head.append(title, copy);
 
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'ghun-panel-input';
     input.placeholder = 'Real name';
-    input.value = currentName(username);
+    input.value = currentName(username) || suggestion;
+    input.maxLength = 100;
     input.spellcheck = false;
     input.setAttribute('aria-label', `Show ${username} as`);
+
+    const error = document.createElement('div');
+    error.className = 'ghun-panel-error';
+    error.setAttribute('role', 'alert');
+    error.hidden = true;
 
     const actions = document.createElement('div');
     actions.className = 'ghun-panel-actions';
@@ -213,11 +327,33 @@
     remove.hidden = !currentName(username);
 
     async function commit(name) {
+      save.disabled = true;
+      remove.disabled = true;
+      error.hidden = true;
+
+      let previous;
+      try {
+        previous = await persist(username, name);
+      } catch (failure) {
+        // Kept open, with what was typed, so nothing is lost to a refused write.
+        error.textContent = describeSaveError(failure);
+        error.hidden = false;
+        save.disabled = false;
+        remove.disabled = false;
+        return;
+      }
+
       closePanel();
-      await persist(username, name);
       // The hovercard may still be open behind the panel; relabel it directly
       // rather than waiting on the storage change to propagate.
       refreshRows(username, name);
+
+      if (!name && previous) {
+        showToast(`Removed the name for ${username}.`, {
+          label: 'Undo',
+          run: () => restoreName(username, previous),
+        });
+      }
     }
 
     save.addEventListener('click', () => commit(input.value.trim()));
@@ -229,7 +365,7 @@
     });
 
     actions.append(save, remove);
-    panel.append(title, input, actions);
+    panel.append(head, input, error, actions);
 
     // Measure before showing so the panel can't flash in the wrong spot.
     applyStructuralStyles();
@@ -275,7 +411,9 @@
     button.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openPanel(username, button.getBoundingClientRect());
+      openPanel(username, button.getBoundingClientRect(), {
+        suggestion: profileName(row.parentElement, username),
+      });
     });
 
     row.appendChild(button);
@@ -304,7 +442,7 @@
   function linksToProfile(overlay, username) {
     const key = normalizeUsername(username);
     for (const link of overlay.querySelectorAll('a[href]')) {
-      const candidate = usernameFromUrl(link.getAttribute('href'));
+      const candidate = usernameFromUrl(link.getAttribute('href'), location.hostname);
       if (candidate && normalizeUsername(candidate) === key) return true;
     }
     return false;

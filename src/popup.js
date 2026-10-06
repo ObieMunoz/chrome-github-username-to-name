@@ -8,29 +8,37 @@
   'use strict';
 
   const {
-    STORAGE_KEY,
     DEFAULT_COLOR,
     THEME_BACKGROUNDS,
     MIN_CONTRAST,
     normalizeUsername,
     isValidUsername,
-    coerceSettings,
+    normalizeHost,
+    hostPattern,
+    customHosts,
+    describeSaveError,
     parseImport,
     parseHex,
     toHex,
     rgbToHsl,
     hslToRgb,
     contrastRatio,
-    fitToBackground,
   } = globalThis.GHUN;
+  const store = globalThis.GHUN_STORE;
+
+  /** Longest name the inputs accept, so no one entry can approach a storage item's cap. */
+  const MAX_NAME_LENGTH = 100;
 
   const el = {
     enabled: document.getElementById('enabled'),
+    enabledSwitch: document.querySelector('.switch'),
     summary: document.getElementById('summary'),
     form: document.getElementById('add-form'),
     username: document.getElementById('username'),
     replacement: document.getElementById('replacement'),
     status: document.getElementById('status'),
+    statusText: document.getElementById('status-text'),
+    statusAction: document.getElementById('status-action'),
     listHeader: document.getElementById('list-header'),
     filter: document.getElementById('filter'),
     list: document.getElementById('list'),
@@ -47,42 +55,37 @@
     copyBtn: document.getElementById('copy'),
     importJson: document.getElementById('import-json'),
     importBtn: document.getElementById('import'),
+    pageNote: document.getElementById('page-note'),
+    pageList: document.getElementById('page-list'),
+    pageAdd: document.getElementById('page-add'),
+    hostsValue: document.getElementById('hosts-value'),
+    hostForm: document.getElementById('host-form'),
+    host: document.getElementById('host'),
+    hostList: document.getElementById('host-list'),
+    hostEmpty: document.getElementById('host-empty'),
   };
 
   let settings = { enabled: true, mappings: {}, color: null };
   let statusTimer = null;
+  let statusRun = null;
 
   // --- storage ---------------------------------------------------------------
 
   function load() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(STORAGE_KEY, (result) => {
-        resolve(coerceSettings(result[STORAGE_KEY]));
-      });
-    });
+    return store.load(chrome.storage.sync);
   }
 
-  function save() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.set({ [STORAGE_KEY]: settings }, () => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          // The whole map lives in one sync item, capped at 8KB.
-          showStatus(
-            /quota/i.test(error.message)
-              ? 'Out of sync storage. Copy a backup, then remove a few entries.'
-              : `Could not save: ${error.message}`,
-            true
-          );
-          resolve(false);
-          return;
-        }
-        // The export box shows what is stored, so it is refreshed where the
-        // store is written — every path that changes a setting ends up here.
-        renderExport();
-        resolve(true);
-      });
-    });
+  async function save() {
+    try {
+      await store.save(chrome.storage.sync, settings);
+    } catch (error) {
+      showStatus(describeSaveError(error), true);
+      return false;
+    }
+    // The export box shows what is stored, so it is refreshed where the
+    // store is written — every path that changes a setting ends up here.
+    renderExport();
+    return true;
   }
 
   // --- views -----------------------------------------------------------------
@@ -98,8 +101,16 @@
    */
   const views = {
     main: document.getElementById('view-main'),
+    page: document.getElementById('view-page'),
     color: document.getElementById('view-color'),
+    hosts: document.getElementById('view-hosts'),
     backup: document.getElementById('view-backup'),
+  };
+
+  /** Panels that fetch what they show each time they open. */
+  const onOpen = {
+    page: () => loadPage(),
+    hosts: () => renderHosts(),
   };
 
   /** The row a panel was opened from, so Back can hand focus straight back. */
@@ -120,6 +131,7 @@
     // The way out, rather than the first control: a panel opened by keyboard
     // otherwise leaves focus on a row that is no longer on the page.
     views[name].querySelector('.back').focus();
+    if (onOpen[name]) onOpen[name]();
   }
 
   function closePanel() {
@@ -149,14 +161,35 @@
 
   // --- rendering -------------------------------------------------------------
 
-  function showStatus(message, isError = false) {
+  /**
+   * @param {{label: string, run: Function}} [action] a button offered beside the
+   *   message, such as Undo. It stays up as long as an error does, so there is
+   *   time to reach it.
+   */
+  function showStatus(message, isError = false, action = null) {
     clearTimeout(statusTimer);
-    el.status.textContent = message;
+    el.statusText.textContent = message;
     el.status.classList.toggle('error', isError);
     el.status.hidden = false;
-    statusTimer = setTimeout(() => {
-      el.status.hidden = true;
-    }, isError ? 6000 : 2500);
+
+    statusRun = action ? action.run : null;
+    el.statusAction.textContent = action ? action.label : '';
+    el.statusAction.hidden = !action;
+
+    statusTimer = setTimeout(hideStatus, isError || action ? 6000 : 2500);
+  }
+
+  function hideStatus() {
+    clearTimeout(statusTimer);
+    el.status.hidden = true;
+    el.statusAction.hidden = true;
+    statusRun = null;
+  }
+
+  function runStatusAction() {
+    const run = statusRun;
+    hideStatus();
+    if (run) run();
   }
 
   function sortedEntries() {
@@ -177,6 +210,7 @@
     const input = document.createElement('input');
     input.type = 'text';
     input.value = replacement;
+    input.maxLength = MAX_NAME_LENGTH;
     input.setAttribute('aria-label', `Replacement for ${username}`);
     input.addEventListener('change', async () => {
       const value = input.value.trim();
@@ -196,10 +230,14 @@
     remove.title = `Remove ${username}`;
     remove.setAttribute('aria-label', `Remove ${username}`);
     remove.addEventListener('click', async () => {
+      const previous = settings.mappings[username];
       delete settings.mappings[username];
       if (await save()) {
         render();
-        showStatus(`Removed ${username}.`);
+        showStatus(`Removed ${username}.`, false, {
+          label: 'Undo',
+          run: () => restoreMapping(username, previous),
+        });
       }
     });
 
@@ -509,6 +547,23 @@
     }
   }
 
+  async function restoreMapping(username, replacement) {
+    settings.mappings[username] = replacement;
+    if (await save()) {
+      render();
+      showStatus(`Restored ${username}.`);
+    }
+  }
+
+  /** Name the pause shortcut on the switch, as whatever it is currently bound to. */
+  async function describeShortcut() {
+    if (!chrome.commands) return;
+    const commands = await chrome.commands.getAll();
+    const toggle = commands.find((command) => command.name === 'toggle-replacement');
+    const base = 'Turn all replacements on or off';
+    el.enabledSwitch.title = toggle && toggle.shortcut ? `${base} (${toggle.shortcut})` : base;
+  }
+
   async function toggleEnabled() {
     settings.enabled = el.enabled.checked;
     if (await save()) {
@@ -603,6 +658,183 @@
     }
   }
 
+  // --- add from this page -----------------------------------------------------
+
+  /** Bumped on every load, so a slow answer for a view since left can't land. */
+  let pageLoad = 0;
+
+  /** Ask the active tab who it links to; null when no content script answers. */
+  async function collectFromTab() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || tab.id == null) return null;
+      const result = await chrome.tabs.sendMessage(tab.id, { type: 'ghun:collect' });
+      return result && Array.isArray(result.people) ? result : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function buildPerson({ username, name }) {
+    const row = document.createElement('li');
+    row.className = 'person';
+    row.dataset.username = username;
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = Boolean(name);
+    box.setAttribute('aria-label', `Add ${username}`);
+
+    const label = document.createElement('span');
+    label.className = 'name';
+    label.textContent = username;
+    label.title = username;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = name;
+    input.placeholder = 'Real Name';
+    input.maxLength = MAX_NAME_LENGTH;
+    input.setAttribute('aria-label', `Show ${username} as`);
+    // Giving someone a name is choosing to add them.
+    input.addEventListener('input', () => {
+      if (input.value.trim()) box.checked = true;
+    });
+
+    row.append(box, label, input);
+    return row;
+  }
+
+  async function loadPage() {
+    const load = (pageLoad += 1);
+    el.pageList.textContent = '';
+    el.pageAdd.hidden = true;
+    el.pageNote.textContent = 'Looking for people on this page…';
+
+    const result = await collectFromTab();
+    if (load !== pageLoad) return;
+
+    if (!result) {
+      el.pageNote.textContent =
+        'Open a GitHub page, then try again. A tab that was open before the ' +
+        'extension was installed or updated needs a reload first.';
+      return;
+    }
+    if (!result.people.length) {
+      el.pageNote.textContent = 'Everyone linked from this page already has a name.';
+      return;
+    }
+
+    el.pageNote.textContent = result.truncated
+      ? `Showing the first ${result.people.length} people without a name.`
+      : 'Names come from each profile. Tick who to add.';
+    for (const person of result.people) el.pageList.appendChild(buildPerson(person));
+    el.pageAdd.hidden = false;
+  }
+
+  async function addFromPage() {
+    const chosen = [];
+    for (const row of el.pageList.querySelectorAll('.person')) {
+      if (!row.querySelector('input[type="checkbox"]').checked) continue;
+
+      const input = row.querySelector('input[type="text"]');
+      const name = input.value.trim();
+      if (!name) {
+        showStatus(`Enter a name for ${row.dataset.username}, or untick them.`, true);
+        input.focus();
+        return;
+      }
+      chosen.push([normalizeUsername(row.dataset.username), name]);
+    }
+
+    if (!chosen.length) {
+      showStatus('Tick someone to add first.', true);
+      return;
+    }
+
+    for (const [username, name] of chosen) settings.mappings[username] = name;
+    if (await save()) {
+      render();
+      closePanel();
+      showStatus(`Added ${chosen.length} name${chosen.length === 1 ? '' : 's'}.`);
+    }
+  }
+
+  // --- GitHub Enterprise hosts ------------------------------------------------
+
+  /**
+   * Granted permissions are the record of which hosts were added; the service
+   * worker registers the content scripts from the same list. Nothing else is
+   * stored, so the two can't disagree.
+   */
+  async function grantedHosts() {
+    const { origins } = await chrome.permissions.getAll();
+    return customHosts(origins);
+  }
+
+  function buildHost(host) {
+    const row = document.createElement('li');
+    row.className = 'host';
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = host;
+    name.title = host;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'delete';
+    remove.textContent = '✕';
+    remove.title = `Remove ${host}`;
+    remove.setAttribute('aria-label', `Remove ${host}`);
+    remove.addEventListener('click', async () => {
+      await chrome.permissions.remove({ origins: [hostPattern(host)] });
+      await renderHosts();
+      showStatus(`Removed ${host}.`);
+    });
+
+    row.append(name, remove);
+    return row;
+  }
+
+  async function renderHosts() {
+    const hosts = await grantedHosts();
+    el.hostList.textContent = '';
+    for (const host of hosts) el.hostList.appendChild(buildHost(host));
+    el.hostEmpty.hidden = hosts.length > 0;
+    el.hostsValue.textContent = hosts.length ? String(hosts.length) : '';
+  }
+
+  async function addHost(event) {
+    event.preventDefault();
+
+    const host = normalizeHost(el.host.value);
+    if (!host) {
+      showStatus('Enter an Enterprise host, like github.example.com. github.com is built in.', true);
+      el.host.focus();
+      return;
+    }
+
+    // Asked before anything else is awaited: Chrome only shows its prompt from
+    // inside the gesture that submitted the form.
+    let granted;
+    try {
+      granted = await chrome.permissions.request({ origins: [hostPattern(host)] });
+    } catch (error) {
+      showStatus(`Could not ask for ${host}: ${error.message}`, true);
+      return;
+    }
+
+    if (!granted) {
+      showStatus(`Chrome was not given access to ${host}.`, true);
+      return;
+    }
+
+    el.host.value = '';
+    await renderHosts();
+    showStatus(`Added ${host}. Reload any tabs already open on it.`);
+  }
+
   // --- wiring ----------------------------------------------------------------
 
   async function init() {
@@ -618,6 +850,12 @@
     el.filter.addEventListener('input', render);
     el.copyBtn.addEventListener('click', copyExport);
     el.importBtn.addEventListener('click', importMappings);
+    el.statusAction.addEventListener('click', runStatusAction);
+    el.pageAdd.addEventListener('click', addFromPage);
+    el.hostForm.addEventListener('submit', addHost);
+
+    renderHosts();
+    describeShortcut();
 
     el.username.focus();
   }

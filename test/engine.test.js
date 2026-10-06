@@ -7,6 +7,7 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const COMMON_SRC = fs.readFileSync(path.join(__dirname, '../src/common.js'), 'utf8');
+const STORE_SRC = fs.readFileSync(path.join(__dirname, '../src/store.js'), 'utf8');
 const CONTENT_SRC = fs.readFileSync(path.join(__dirname, '../src/content.js'), 'utf8');
 
 const MAPPINGS = { u1069002: 'Obie Munoz' };
@@ -15,13 +16,18 @@ const MAPPINGS = { u1069002: 'Obie Munoz' };
  * Build a page, load the real content script into it, and run one scan.
  * `chromeStub` is omitted by default so the script does not self-start.
  */
-function setup(bodyHtml, { mappings = MAPPINGS, enabled = true, chromeStub = null } = {}) {
+function setup(
+  bodyHtml,
+  { mappings = MAPPINGS, enabled = true, chromeStub = null, url = 'https://github.com/' } = {}
+) {
   const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
     runScripts: 'outside-only',
+    url,
   });
   const { window } = dom;
 
   window.eval(COMMON_SRC);
+  window.eval(STORE_SRC);
   if (chromeStub) window.chrome = chromeStub(window);
   window.eval(CONTENT_SRC);
 
@@ -31,6 +37,43 @@ function setup(bodyHtml, { mappings = MAPPINGS, enabled = true, chromeStub = nul
   }
   return window;
 }
+
+/**
+ * A chrome stand-in backed by real stored items, for tests that drive `start`.
+ * `write` stores items and fires storage.onChanged the way Chrome does.
+ */
+function storageStub(initial) {
+  const items = { ...initial };
+  const listeners = [];
+  const messages = [];
+
+  const factory = () => ({
+    runtime: {
+      id: 'test-extension',
+      lastError: null,
+      sendMessage: async (message) => {
+        messages.push(message);
+      },
+    },
+    storage: {
+      sync: { get: async () => JSON.parse(JSON.stringify(items)) },
+      onChanged: { addListener: (listener) => listeners.push(listener) },
+    },
+  });
+
+  factory.messages = messages;
+  factory.write = (next) => {
+    const changes = {};
+    for (const [key, value] of Object.entries(next)) {
+      changes[key] = { oldValue: items[key], newValue: value };
+      items[key] = value;
+    }
+    for (const listener of listeners) listener(changes, 'sync');
+  };
+  return factory;
+}
+
+const settle = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const $ = (window, selector) => window.document.querySelector(selector);
 const replacedSpans = (window) => window.document.querySelectorAll('span.ghun-name');
@@ -130,18 +173,13 @@ test('never rewrites the blame view, which drops the file-contents wrapper', () 
 test('never rewrites code lines streamed in by the virtualized scroller', async () => {
   // The file view only renders the lines near the viewport, so most of a file
   // arrives through the observer rather than the first scan.
-  const chromeStub = () => ({
-    runtime: { id: 'test-extension', lastError: null },
-    storage: {
-      sync: { get: (key, cb) => cb({ [key]: { enabled: true, mappings: MAPPINGS } }) },
-      onChanged: { addListener() {} },
-    },
-  });
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
 
   const window = setup(
     '<div class="react-code-file-contents"><div id="lines" class="react-code-lines"></div></div>',
     { chromeStub }
   );
+  await settle();
 
   const source = 'git blame --author=u1069002';
   const line = window.document.createElement('div');
@@ -185,17 +223,12 @@ test('never rewrites the styled copy beside a wrapped search input', () => {
 });
 
 test('never rewrites a filter bar copy that React renders after load', async () => {
-  const chromeStub = () => ({
-    runtime: { id: 'test-extension', lastError: null },
-    storage: {
-      sync: { get: (key, cb) => cb({ [key]: { enabled: true, mappings: MAPPINGS } }) },
-      onChanged: { addListener() {} },
-    },
-  });
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
   const window = setup(
     '<div id="bar"><input type="text" value="author:u1069002"><div id="overlay" aria-hidden="true"></div></div>',
     { chromeStub }
   );
+  await settle();
 
   const value = window.document.createElement('span');
   value.textContent = 'u1069002';
@@ -435,15 +468,10 @@ test('changing settings re-renders without a reload', () => {
 // --- live DOM updates -------------------------------------------------------
 
 test('replaces content added after load, the way GitHub does', async () => {
-  const chromeStub = () => ({
-    runtime: { id: 'test-extension', lastError: null },
-    storage: {
-      sync: { get: (key, cb) => cb({ [key]: { enabled: true, mappings: MAPPINGS } }) },
-      onChanged: { addListener() {} },
-    },
-  });
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
 
   const window = setup('<div id="thread"></div>', { chromeStub });
+  await settle();
 
   // Existing content is handled on start.
   assert.equal(replacedSpans(window).length, 0);
@@ -460,13 +488,7 @@ test('replaces content added after load, the way GitHub does', async () => {
 });
 
 test('does not loop forever on its own mutations', async () => {
-  const chromeStub = () => ({
-    runtime: { id: 'test-extension', lastError: null },
-    storage: {
-      sync: { get: (key, cb) => cb({ [key]: { enabled: true, mappings: MAPPINGS } }) },
-      onChanged: { addListener() {} },
-    },
-  });
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
 
   const window = setup('<p id="t">opened by u1069002</p>', { chromeStub });
   await new Promise((resolve) => setTimeout(resolve, 30));
@@ -475,21 +497,139 @@ test('does not loop forever on its own mutations', async () => {
   assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
 });
 
+// --- GitHub Enterprise -------------------------------------------------------
+
+test('skips a repo home page link on an Enterprise host', () => {
+  const window = setup('<a id="r" href="https://github.example.com/u1069002/u1069002">u1069002</a>', {
+    url: 'https://github.example.com/',
+  });
+  assert.equal(shown(window, '#r'), 'u1069002');
+});
+
+test('leaves a bare Enterprise URL in text alone', () => {
+  const window = setup('<p id="t">see github.example.com/u1069002</p>', {
+    url: 'https://github.example.com/',
+  });
+  assert.equal(shown(window, '#t'), 'see github.example.com/u1069002');
+});
+
+test('still replaces names on an Enterprise host', () => {
+  const window = setup('<p id="t">opened by u1069002</p>', { url: 'https://github.example.com/' });
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
+});
+
+// --- storage ----------------------------------------------------------------
+
+test('reads mappings saved across several storage chunks', async () => {
+  const chromeStub = storageStub({
+    ghun: { enabled: true, color: null, chunks: 2 },
+    'ghun.m.0': { u1069002: 'Obie Munoz' },
+    'ghun.m.1': { octocat: 'The Octocat' },
+  });
+  const window = setup('<p id="t">u1069002 and octocat</p>', { chromeStub });
+  await settle();
+
+  assert.equal(shown(window, '#t'), 'Obie Munoz and The Octocat');
+});
+
+test('repaints when a save changes only a chunk', async () => {
+  const chromeStub = storageStub({
+    ghun: { enabled: true, color: null, chunks: 1 },
+    'ghun.m.0': { u1069002: 'Obie Munoz' },
+  });
+  const window = setup('<p id="t">u1069002 and octocat</p>', { chromeStub });
+  await settle();
+
+  chromeStub.write({ 'ghun.m.0': { u1069002: 'Obie Munoz', octocat: 'The Octocat' } });
+  await settle();
+
+  assert.equal(shown(window, '#t'), 'Obie Munoz and The Octocat');
+});
+
+test('ignores storage changes that are not its own', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p id="t">opened by u1069002</p>', { chromeStub });
+  await settle();
+  const span = $(window, 'span.ghun-name');
+
+  chromeStub.write({ unrelated: 1 });
+  await settle();
+
+  assert.equal($(window, 'span.ghun-name'), span);
+});
+
+// --- toolbar badge ------------------------------------------------------------
+
+const counts = (stub) =>
+  stub.messages.filter((message) => message.type === 'ghun:count').map((message) => message.count);
+
+test('reports how many names it replaced, for the toolbar badge', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  setup('<p>u1069002 and u1069002</p>', { chromeStub });
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [2]);
+});
+
+test('reports names that arrive later', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  const late = window.document.createElement('p');
+  late.textContent = 'cc u1069002';
+  window.document.body.appendChild(late);
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [1, 2]);
+});
+
+test('reports zero once paused', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  chromeStub.write({ ghun: { enabled: false, mappings: MAPPINGS } });
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [1, 0]);
+});
+
+test('does not repeat a count that has not changed', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  window.document.body.appendChild(window.document.createElement('div'));
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [1]);
+});
+
+test('reports again when the page comes back from the back-forward cache', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  const event = new window.Event('pageshow');
+  event.persisted = true;
+  window.dispatchEvent(event);
+
+  assert.deepEqual(counts(chromeStub), [1, 1]);
+});
+
 // --- highlight color --------------------------------------------------------
 
 /**
  * The color is published to `<html>`, outside anything a scan touches, and only
  * on start — so these drive the real `start` rather than calling applySettings.
  */
-function started(stored) {
-  const chromeStub = () => ({
-    runtime: { id: 'test-extension', lastError: null },
-    storage: {
-      sync: { get: (key, cb) => cb({ [key]: stored }) },
-      onChanged: { addListener() {} },
-    },
+async function started(stored) {
+  const window = setup('<p id="t">opened by u1069002</p>', {
+    chromeStub: storageStub({ ghun: stored }),
   });
-  return setup('<p id="t">opened by u1069002</p>', { chromeStub });
+  await settle();
+  return window;
 }
 
 const inlineColor = (window) =>
@@ -502,7 +642,7 @@ test('puts the highlight color back when the page clears it', async () => {
   // Navigating back to a page GitHub has already rendered brings it back with
   // <html>'s inline style gone. Every name on it then read as the shipped
   // default, and only a reload — a fresh document — put the pick back.
-  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+  const window = await started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
   assert.equal(inlineColor(window), '#ff00ff');
 
   window.document.documentElement.removeAttribute('style');
@@ -512,7 +652,7 @@ test('puts the highlight color back when the page clears it', async () => {
 });
 
 test('puts it back without taking the page style with it', async () => {
-  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+  const window = await started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
   const root = window.document.documentElement;
 
   root.setAttribute('style', PAGE_STYLE);
@@ -523,7 +663,7 @@ test('puts it back without taking the page style with it', async () => {
 });
 
 test('writes no color at all while on the default', async () => {
-  const window = started({ enabled: true, mappings: MAPPINGS });
+  const window = await started({ enabled: true, mappings: MAPPINGS });
   const root = window.document.documentElement;
   assert.equal(inlineColor(window), '');
 
@@ -536,7 +676,7 @@ test('writes no color at all while on the default', async () => {
 });
 
 test('does not trade writes with the page over the color', async () => {
-  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+  const window = await started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
   const root = window.document.documentElement;
 
   let writes = 0;
@@ -555,8 +695,8 @@ test('does not trade writes with the page over the color', async () => {
   assert.equal(inlineColor(window), '#ff00ff');
 });
 
-test('re-applies the color on a soft navigation', () => {
-  const window = started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
+test('re-applies the color on a soft navigation', async () => {
+  const window = await started({ enabled: true, mappings: MAPPINGS, color: '#ff00ff' });
 
   // With the observers stopped, the navigation hook is the only path left —
   // which is the case where the element being watched is no longer the live one.

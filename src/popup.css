@@ -1,9 +1,5 @@
 :root {
-  /*
-   * The popup's accent. Overwritten inline by popup.js with the dark variant of
-   * the user's pick — the popup is always dark, so that is the one that belongs
-   * here regardless of which theme the pick was made in.
-   */
+  /* The popup's accent. Overwritten inline by popup.js with the user's pick. */
   --neon: #39ff14;
   --bg: #0d1117;
   --bg-raised: #161b22;
@@ -283,7 +279,11 @@ button.primary:hover {
 
 /* Last in the body, below whichever view is up, and never squeezed. */
 .status {
+  display: flex;
   flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: 10px 0 0;
   padding: 7px 9px;
   border-radius: 6px;
@@ -292,9 +292,27 @@ button.primary:hover {
   color: var(--neon);
 }
 
+.status[hidden] {
+  display: none;
+}
+
 .status.error {
   background: rgba(248, 81, 73, 0.12);
   color: var(--danger);
+}
+
+.status-action {
+  flex: none;
+  padding: 2px 10px;
+  border-color: currentColor;
+  background: none;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-action[hidden] {
+  display: none;
 }
 
 /* --- list ----------------------------------------------------------------- */
@@ -337,7 +355,8 @@ button.primary:hover {
   color: var(--neon);
 }
 
-.row .delete {
+.row .delete,
+.host .delete {
   padding: 4px 8px;
   border-color: transparent;
   background: none;
@@ -346,7 +365,8 @@ button.primary:hover {
   line-height: 1;
 }
 
-.row .delete:hover {
+.row .delete:hover,
+.host .delete:hover {
   border-color: var(--danger);
   color: var(--danger);
 }
@@ -519,4 +539,82 @@ button.primary:hover {
 /* Read-only: something to copy out of, not another field to fill in. */
 .json[readonly] {
   color: var(--muted);
+}
+
+/* --- panels with a list --------------------------------------------------- */
+
+.panel-note {
+  flex: none;
+  margin: 0 2px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* As on the main view, the list is what gives ground when the popup is full. */
+#view-page > .list,
+#view-hosts > .list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0;
+}
+
+.person {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.person:last-child {
+  border-bottom: none;
+}
+
+.person input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--neon);
+}
+
+.person .name,
+.host .name {
+  overflow: hidden;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-action {
+  flex: none;
+  width: 100%;
+  margin-top: 10px;
+}
+
+/* --- enterprise hosts ----------------------------------------------------- */
+
+.host-form {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.host {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.host:last-child {
+  border-bottom: none;
+}
+
+.host .name {
+  color: var(--text);
 }

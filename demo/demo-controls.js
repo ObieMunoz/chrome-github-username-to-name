@@ -70,9 +70,24 @@
     return usernameFromUrl(trigger.getAttribute('href') || '');
   }
 
-  function cardBody(username, loginMarkup) {
+  /** The names these accounts would carry on their GitHub profiles. */
+  const PROFILE_NAMES = {
+    u1069002: 'Obie Munoz',
+    octocat: 'The Octocat',
+    'someone-else': 'Someone Else',
+  };
+
+  /**
+   * Like GitHub's own card, the profile name and the login are two links to the
+   * same profile, which is what the editor's pre-filled name is read from.
+   */
+  function cardBody(username) {
+    const name = PROFILE_NAMES[username.toLowerCase()];
+    const nameMarkup = name ? `<a class="mock-name" href="/${username}">${name}</a>` : '';
     return (
-      `<div class="mock-head"><span class="mock-avatar"></span>${loginMarkup}</div>` +
+      '<div class="mock-head"><span class="mock-avatar"></span>' +
+      `<div class="mock-names">${nameMarkup}<a class="mock-login" href="/${username}">${username}</a></div>` +
+      '</div>' +
       '<p class="mock-bio">Engineering Manager · Tampa, Florida</p>' +
       '<p class="mock-bio">Opened this pull request</p>'
     );
@@ -93,20 +108,13 @@
       // The React card links to the profile; that link is how the extension
       // identifies an unlabelled overlay as this user's hovercard.
       card.className = 'mock-react-overlay';
-      card.innerHTML = cardBody(
-        username,
-        `<a class="mock-login" href="/${username}">${username}</a>`
-      );
+      card.innerHTML = cardBody(username);
       document.getElementById('__primerPortalRoot__').appendChild(card);
       return;
     }
 
     card.className = 'js-hovercard-content';
-    card.innerHTML =
-      `<div class="Popover-message">${cardBody(
-        username,
-        `<span class="mock-login">${username}</span>`
-      )}</div>`;
+    card.innerHTML = `<div class="Popover-message">${cardBody(username)}</div>`;
     document.body.appendChild(card);
   }
 
