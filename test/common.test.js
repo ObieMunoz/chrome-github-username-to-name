@@ -13,6 +13,10 @@ const {
   coerceSettings,
   looksLikeUrl,
   describeSaveError,
+  normalizeHost,
+  hostPattern,
+  customHosts,
+  badgeText,
 } = globalThis.GHUN;
 
 /** Run the matcher the way content.js does and return the matched tokens. */
@@ -227,4 +231,78 @@ test('passes any other save error through', () => {
     describeSaveError(new Error('MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded')),
     'Could not save: MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded'
   );
+});
+
+// --- GitHub Enterprise hosts ---------------------------------------------------
+
+const GHE = 'github.example.com';
+
+test('reads a profile link on an Enterprise host', () => {
+  assert.equal(usernameFromUrl(`https://${GHE}/octocat`, GHE), 'octocat');
+  assert.equal(usernameFromUrl('/octocat', GHE), 'octocat');
+});
+
+test('does not read a profile link on another host', () => {
+  assert.equal(usernameFromUrl(`https://${GHE}/octocat`), null);
+  assert.equal(usernameFromUrl('https://github.com/octocat', GHE), null);
+});
+
+test('treats an empty host as github.com', () => {
+  assert.equal(usernameFromUrl('https://github.com/octocat', ''), 'octocat');
+});
+
+test('recognises a repo home page on an Enterprise host', () => {
+  assert.equal(isRepoRootPath(`https://${GHE}/octocat/hello`, GHE), true);
+  assert.equal(isRepoRootPath(`https://${GHE}/octocat/hello`), false);
+});
+
+test('reads an absolute hovercard URL on an Enterprise host', () => {
+  assert.equal(usernameFromHovercardUrl(`https://${GHE}/users/octocat/hovercard`, GHE), 'octocat');
+  assert.equal(usernameFromHovercardUrl(`https://${GHE}/users/octocat/hovercard`), null);
+});
+
+test('treats a bare Enterprise URL in text as a URL', () => {
+  assert.equal(looksLikeUrl(`see ${GHE}/octocat`, GHE), true);
+  assert.equal(looksLikeUrl('see github.com/octocat', GHE), true);
+  assert.equal(looksLikeUrl('see octocat', GHE), false);
+});
+
+test('normalizes what someone types as a host', () => {
+  assert.equal(normalizeHost('GitHub.Example.com'), GHE);
+  assert.equal(normalizeHost(`  https://${GHE}/some/page `), GHE);
+  assert.equal(normalizeHost(`${GHE}:8443`), GHE);
+  assert.equal(normalizeHost('github'), 'github');
+});
+
+test('rejects hosts it cannot serve', () => {
+  assert.equal(normalizeHost(''), null);
+  assert.equal(normalizeHost('github.com'), null);
+  assert.equal(normalizeHost('www.github.com'), null);
+  assert.equal(normalizeHost(`http://${GHE}`), null);
+  assert.equal(normalizeHost('not a host'), null);
+  assert.equal(normalizeHost('*.example.com'), null);
+});
+
+test('builds the match pattern for a host', () => {
+  assert.equal(hostPattern(GHE), `https://${GHE}/*`);
+});
+
+test('lists granted Enterprise hosts, leaving out github.com and wildcards', () => {
+  assert.deepEqual(
+    customHosts(['https://github.com/*', `https://${GHE}/*`, 'https://*/*', 'https://a.example.com/*']),
+    ['a.example.com', GHE]
+  );
+  assert.deepEqual(customHosts(undefined), []);
+});
+
+// --- toolbar badge ---------------------------------------------------------------
+
+test('shows the replaced count on the badge', () => {
+  assert.equal(badgeText(7), '7');
+  assert.equal(badgeText(999), '999');
+  assert.equal(badgeText(1000), '999+');
+});
+
+test('clears the badge when nothing was replaced', () => {
+  assert.equal(badgeText(0), null);
 });

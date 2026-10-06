@@ -84,17 +84,15 @@
 
       const annotated = target.closest('[data-hovercard-url]');
       if (annotated) {
-        hovered = {
-          username: usernameFromHovercardUrl(annotated.getAttribute('data-hovercard-url')),
-          at: Date.now(),
-        };
+        const url = annotated.getAttribute('data-hovercard-url');
+        hovered = { username: usernameFromHovercardUrl(url, location.hostname), at: Date.now() };
         return;
       }
 
       const link = target.closest('a[href]');
       if (!link || link.closest('[data-ghun-ui]')) return;
 
-      const username = usernameFromUrl(link.getAttribute('href'));
+      const username = usernameFromUrl(link.getAttribute('href'), location.hostname);
       // A non-profile link doesn't clear the state: the pointer crosses
       // plenty of other links on its way to a card that is still loading.
       if (username) hovered = { username, at: Date.now() };
@@ -444,7 +442,7 @@
   function linksToProfile(overlay, username) {
     const key = normalizeUsername(username);
     for (const link of overlay.querySelectorAll('a[href]')) {
-      const candidate = usernameFromUrl(link.getAttribute('href'));
+      const candidate = usernameFromUrl(link.getAttribute('href'), location.hostname);
       if (candidate && normalizeUsername(candidate) === key) return true;
     }
     return false;

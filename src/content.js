@@ -96,7 +96,7 @@
    * keeps a repo named after its owner readable as itself.
    */
   function isRepoLink(el) {
-    return el.tagName === 'A' && isRepoRootPath(el.getAttribute('href') || '');
+    return el.tagName === 'A' && isRepoRootPath(el.getAttribute('href') || '', location.hostname);
   }
 
   /**
@@ -216,7 +216,7 @@
 
     matcher.lastIndex = 0;
     if (!matcher.test(text)) return false;
-    if (looksLikeUrl(text)) return false;
+    if (looksLikeUrl(text, location.hostname)) return false;
 
     const fragment = document.createDocumentFragment();
     let cursor = 0;

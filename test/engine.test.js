@@ -16,9 +16,13 @@ const MAPPINGS = { u1069002: 'Obie Munoz' };
  * Build a page, load the real content script into it, and run one scan.
  * `chromeStub` is omitted by default so the script does not self-start.
  */
-function setup(bodyHtml, { mappings = MAPPINGS, enabled = true, chromeStub = null } = {}) {
+function setup(
+  bodyHtml,
+  { mappings = MAPPINGS, enabled = true, chromeStub = null, url = 'https://github.com/' } = {}
+) {
   const dom = new JSDOM(`<!doctype html><html><body>${bodyHtml}</body></html>`, {
     runScripts: 'outside-only',
+    url,
   });
   const { window } = dom;
 
@@ -490,6 +494,27 @@ test('does not loop forever on its own mutations', async () => {
   await new Promise((resolve) => setTimeout(resolve, 30));
 
   assert.equal(replacedSpans(window).length, 1);
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
+});
+
+// --- GitHub Enterprise -------------------------------------------------------
+
+test('skips a repo home page link on an Enterprise host', () => {
+  const window = setup('<a id="r" href="https://github.example.com/u1069002/u1069002">u1069002</a>', {
+    url: 'https://github.example.com/',
+  });
+  assert.equal(shown(window, '#r'), 'u1069002');
+});
+
+test('leaves a bare Enterprise URL in text alone', () => {
+  const window = setup('<p id="t">see github.example.com/u1069002</p>', {
+    url: 'https://github.example.com/',
+  });
+  assert.equal(shown(window, '#t'), 'see github.example.com/u1069002');
+});
+
+test('still replaces names on an Enterprise host', () => {
+  const window = setup('<p id="t">opened by u1069002</p>', { url: 'https://github.example.com/' });
   assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
 });
 

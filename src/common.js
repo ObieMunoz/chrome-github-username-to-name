@@ -127,27 +127,38 @@
   }
 
   /**
-   * True for text that is (or contains) a URL, where rewriting the visible text
-   * would make a link disagree with where it actually points.
+   * The helpers below that read links take the host the page is served from, so
+   * they work the same on a GitHub Enterprise host. Content scripts pass
+   * `location.hostname`; anything empty means github.com.
    */
-  function looksLikeUrl(text) {
-    return text.includes('://') || /\bgithub\.com\//i.test(text);
-  }
+  const DEFAULT_HOST = 'github.com';
 
-  /**
-   * Pull a username out of a profile link. Only single-segment github.com paths
-   * count, so `/owner/repo` and `/features` are both rejected.
-   *
-   * @returns {string|null} the username in its original case.
-   */
-  function usernameFromUrl(url) {
-    let parsed;
+  function resolveUrl(url, host) {
     try {
-      parsed = new URL(String(url), 'https://github.com');
+      return new URL(String(url), `https://${host || DEFAULT_HOST}`);
     } catch {
       return null;
     }
-    if (parsed.hostname && parsed.hostname !== 'github.com') return null;
+  }
+
+  /**
+   * True for text that is (or contains) a URL, where rewriting the visible text
+   * would make a link disagree with where it actually points.
+   */
+  function looksLikeUrl(text, host) {
+    if (text.includes('://') || /\bgithub\.com\//i.test(text)) return true;
+    return Boolean(host) && text.toLowerCase().includes(`${host.toLowerCase()}/`);
+  }
+
+  /**
+   * Pull a username out of a profile link. Only single-segment paths on the
+   * page's own host count, so `/owner/repo` and `/features` are both rejected.
+   *
+   * @returns {string|null} the username in its original case.
+   */
+  function usernameFromUrl(url, host) {
+    const parsed = resolveUrl(url, host);
+    if (!parsed || parsed.hostname !== (host || DEFAULT_HOST)) return null;
 
     const segments = parsed.pathname.split('/').filter(Boolean);
     if (segments.length !== 1) return null;
@@ -167,14 +178,9 @@
    * `/owner` stays replaceable, and deeper paths like `/owner/repo/pull/12` are
    * page titles that may legitimately mention someone.
    */
-  function isRepoRootPath(url) {
-    let parsed;
-    try {
-      parsed = new URL(String(url), 'https://github.com');
-    } catch {
-      return false;
-    }
-    if (parsed.hostname && parsed.hostname !== 'github.com') return false;
+  function isRepoRootPath(url, host) {
+    const parsed = resolveUrl(url, host);
+    if (!parsed || parsed.hostname !== (host || DEFAULT_HOST)) return false;
 
     const segments = parsed.pathname.split('/').filter(Boolean);
     if (segments.length !== 2) return false;
@@ -193,16 +199,11 @@
    *
    * @returns {string|null} the username in its original case.
    */
-  function usernameFromHovercardUrl(url) {
+  function usernameFromHovercardUrl(url, host) {
     let path = String(url || '');
     if (path.includes('://')) {
-      let parsed;
-      try {
-        parsed = new URL(path);
-      } catch {
-        return null;
-      }
-      if (parsed.hostname !== 'github.com') return null;
+      const parsed = resolveUrl(path, host);
+      if (!parsed || parsed.hostname !== (host || DEFAULT_HOST)) return null;
       path = parsed.pathname;
     }
 
@@ -211,6 +212,56 @@
 
     const candidate = decodeURIComponent(match[1]);
     return isValidUsername(candidate) ? candidate : null;
+  }
+
+  /** One DNS label: letters, digits and inner hyphens. */
+  const HOST_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$/;
+
+  /**
+   * Turn what someone typed into the hostname of a GitHub Enterprise server.
+   * A pasted URL is reduced to its host. github.com is built in, and only https
+   * is served, so both are refused rather than silently changed.
+   *
+   * @returns {string|null}
+   */
+  function normalizeHost(input) {
+    let text = String(input == null ? '' : input).trim().toLowerCase();
+    if (!text) return null;
+    if (/^[a-z][a-z0-9+.-]*:\/\//.test(text)) {
+      if (!text.startsWith('https://')) return null;
+    } else {
+      text = `https://${text}`;
+    }
+
+    const parsed = resolveUrl(text);
+    if (!parsed) return null;
+    const host = parsed.hostname;
+    if (!HOST_RE.test(host)) return null;
+    if (host === DEFAULT_HOST || host.endsWith(`.${DEFAULT_HOST}`)) return null;
+    return host;
+  }
+
+  function hostPattern(host) {
+    return `https://${host}/*`;
+  }
+
+  /** The Enterprise hosts among granted origins, sorted, without github.com or wildcards. */
+  function customHosts(origins) {
+    const hosts = new Set();
+    for (const origin of origins || []) {
+      const match = /^https:\/\/([^/*]+)\/\*$/.exec(origin);
+      if (match && match[1] !== DEFAULT_HOST) hosts.add(match[1]);
+    }
+    return Array.from(hosts).sort();
+  }
+
+  /**
+   * Toolbar badge text for a count of replaced names. Null clears a tab's own
+   * text so the badge falls back to the global one, which is how "off" shows.
+   */
+  function badgeText(count) {
+    if (!(count > 0)) return null;
+    return count > 999 ? '999+' : String(count);
   }
 
   /* --- color ---------------------------------------------------------------
@@ -479,6 +530,10 @@
     usernameFromUrl,
     isRepoRootPath,
     usernameFromHovercardUrl,
+    normalizeHost,
+    hostPattern,
+    customHosts,
+    badgeText,
     parseHex,
     toHex,
     normalizeHex,

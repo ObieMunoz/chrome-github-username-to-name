@@ -20,9 +20,10 @@ const tick = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 const plain = (object) => ({ ...object });
 
-function setup({ mappings = {}, failWrites = null } = {}) {
+function setup({ mappings = {}, failWrites = null, url = 'https://github.com/' } = {}) {
   const dom = new JSDOM('<!doctype html><html><body><div id="app"></div></body></html>', {
     runScripts: 'outside-only',
+    url,
   });
   const { window } = dom;
   const items = { ghun: { enabled: true, mappings } };
@@ -544,6 +545,28 @@ test('a portal row opens the same editor panel', async () => {
 
   assert.equal(stored().mappings.u1069002, 'Obie Munoz');
   assert.match(overlay.querySelector('.ghun-card-row').textContent, /Showing as “Obie Munoz”/);
+});
+
+test('enhances a React card on an Enterprise host, where links are absolute', async () => {
+  const { window } = setup({ url: 'https://github.example.com/' });
+  hoverProfileLink(window, 'https://github.example.com/u1069002');
+
+  const overlay = window.document.createElement('div');
+  overlay.innerHTML =
+    '<div><a href="https://github.example.com/u1069002">Obie Munoz</a>' +
+    '<a href="https://github.example.com/u1069002">u1069002</a></div>';
+  portalFor(window).appendChild(overlay);
+  await tick();
+
+  click(window, overlay.querySelector('.ghun-card-button'));
+  assert.equal(window.document.querySelector('#ghun-panel .ghun-panel-input').value, 'Obie Munoz');
+});
+
+test('reads an absolute hovercard URL on an Enterprise host', async () => {
+  const { window } = setup({ url: 'https://github.example.com/' });
+  const card = await showHovercard(window, 'https://github.example.com/users/u1069002/hovercard');
+
+  assert.equal(card.querySelector('.ghun-card-row').dataset.ghunFor, 'u1069002');
 });
 
 test('keeps enhancing after soft navigation swaps the whole <body>', async () => {
