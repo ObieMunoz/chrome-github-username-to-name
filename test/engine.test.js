@@ -154,6 +154,65 @@ test('never rewrites code lines streamed in by the virtualized scroller', async 
   assert.equal(replacedSpans(window).length, 0);
 });
 
+test('never rewrites the styled copy laid over the pull request filter bar', () => {
+  const query = 'is:pr state:open author:u1069002';
+  const window = setup(
+    '<div class="FilterBar">' +
+      '<input type="text" aria-label="Search all pull requests" value="' + query + '">' +
+      '<div id="overlay" aria-hidden="true">' +
+      '<span>is:</span><span>pr</span> <span>state:</span><span>open</span> ' +
+      '<span>author:</span><span id="value">u1069002</span>' +
+      '</div>' +
+      '</div>'
+  );
+
+  assert.equal($(window, '#overlay').textContent, query);
+  assert.equal(replacedSpans(window).length, 0);
+});
+
+test('never rewrites the styled copy beside a wrapped search input', () => {
+  const query = 'author:u1069002';
+  const window = setup(
+    '<div class="QueryBuilder-StyledInput">' +
+      '<span id="overlay" class="QueryBuilder-StyledInputContent" aria-hidden="true">' +
+      '<span>author:</span><span>u1069002</span></span>' +
+      '<div class="QueryBuilder-InputWrapper"><input type="search" value="' + query + '"></div>' +
+      '</div>'
+  );
+
+  assert.equal($(window, '#overlay').textContent, query);
+  assert.equal(replacedSpans(window).length, 0);
+});
+
+test('never rewrites a filter bar copy that React renders after load', async () => {
+  const chromeStub = () => ({
+    runtime: { id: 'test-extension', lastError: null },
+    storage: {
+      sync: { get: (key, cb) => cb({ [key]: { enabled: true, mappings: MAPPINGS } }) },
+      onChanged: { addListener() {} },
+    },
+  });
+  const window = setup(
+    '<div id="bar"><input type="text" value="author:u1069002"><div id="overlay" aria-hidden="true"></div></div>',
+    { chromeStub }
+  );
+
+  const value = window.document.createElement('span');
+  value.textContent = 'u1069002';
+  $(window, '#overlay').append('author:', value);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  assert.equal($(window, '#overlay').textContent, 'author:u1069002');
+  assert.equal(replacedSpans(window).length, 0);
+});
+
+test('still replaces hidden text that sits beside a checkbox rather than a text field', () => {
+  const window = setup(
+    '<div class="row"><input type="checkbox"><span id="t" aria-hidden="true">opened by u1069002</span></div>'
+  );
+  assert.equal(shown(window, '#t'), 'opened by Obie Munoz');
+});
+
 test('never rewrites text that is a URL', () => {
   const window = setup('<p id="t">https://github.com/u1069002</p>');
   assert.equal($(window, '#t').textContent, 'https://github.com/u1069002');
