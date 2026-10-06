@@ -45,7 +45,10 @@ importScripts('common.js', 'store.js');
   chrome.runtime.onMessage.addListener((message, sender) => {
     if (!message || message.type !== 'ghun:count') return false;
     if (!sender.tab || sender.tab.id == null) return false;
-    chrome.action.setBadgeText({ tabId: sender.tab.id, text: badgeText(message.count) });
+    // Rejects when the tab closed before the count arrived, which is harmless.
+    chrome.action
+      .setBadgeText({ tabId: sender.tab.id, text: badgeText(message.count) })
+      .catch(() => {});
     return false;
   });
 

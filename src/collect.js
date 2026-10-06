@@ -5,7 +5,7 @@
  * Profiles are fetched from the page's own origin with the page's own session,
  * so this works for members only an org can see, and on an Enterprise host,
  * without a token. The name is read from the profile's `vcard-fullname`, or
- * failing that its `itemprop="name"` — microformat and schema.org markup GitHub
+ * failing that its `itemprop="name"`: microformat and schema.org markup GitHub
  * keeps for search engines, so it has reasons to stay put that a styling class
  * does not.
  */
