@@ -49,9 +49,9 @@
   const RESERVED_PATHS = new Set([
     'about', 'account', 'apps', 'blog', 'business', 'codespaces', 'collections',
     'contact', 'copilot', 'customer-stories', 'dashboard', 'discussions',
-    'education', 'enterprise', 'events', 'explore', 'features', 'home', 'issues',
+    'education', 'enterprise', 'events', 'explore', 'features', 'feed', 'home', 'issues',
     'join', 'login', 'logout', 'marketplace', 'new', 'nonprofit', 'notifications',
-    'orgs', 'organizations', 'pages', 'pricing', 'pulls', 'readme', 'search',
+    'orgs', 'organizations', 'pages', 'pricing', 'pulls', 'readme', 'repos', 'search',
     'security', 'session', 'settings', 'signup', 'site', 'sponsors', 'stars',
     'team', 'topics', 'trending', 'users', 'watching',
   ]);

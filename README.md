@@ -34,7 +34,7 @@ hovercard doubles as the edit surface. The editor also has a **Copy** button for
 the raw username.
 
 **Add everyone on a page:** open **Add from this page** in the popup. It lists
-every person the current GitHub tab links to who doesn't have a name yet, with
+every person the current GitHub tab shows who doesn't have a name yet, with
 the name from each profile filled in and ticked. Untick anyone you'd rather
 leave out, fill in the blanks, and hit **Add selected**. An organization's
 **People** page or a busy pull request is the quick way to cover a whole team.
@@ -345,6 +345,10 @@ profile, so the name is the text of a link back to that user that isn't just
 their login. **Add from this page** fetches each profile instead and reads its
 `vcard-fullname` (or `itemprop="name"`), markup GitHub keeps for search engines
 rather than for styling. A profile with no name of its own fills in nothing.
+The same page decides who is a person at all: a link to an organization or to
+one of GitHub's own pages looks just like a profile link, so anyone whose page
+isn't a user's profile (a `user:` hovercard subject, or the login in its vcard)
+is left out. GitHub's header, menus and footer are skipped too.
 
 ## Scope
 
