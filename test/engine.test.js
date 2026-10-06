@@ -558,6 +558,66 @@ test('ignores storage changes that are not its own', async () => {
   assert.equal($(window, 'span.ghun-name'), span);
 });
 
+// --- toolbar badge ------------------------------------------------------------
+
+const counts = (stub) =>
+  stub.messages.filter((message) => message.type === 'ghun:count').map((message) => message.count);
+
+test('reports how many names it replaced, for the toolbar badge', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  setup('<p>u1069002 and u1069002</p>', { chromeStub });
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [2]);
+});
+
+test('reports names that arrive later', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  const late = window.document.createElement('p');
+  late.textContent = 'cc u1069002';
+  window.document.body.appendChild(late);
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [1, 2]);
+});
+
+test('reports zero once paused', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  chromeStub.write({ ghun: { enabled: false, mappings: MAPPINGS } });
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [1, 0]);
+});
+
+test('does not repeat a count that has not changed', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  window.document.body.appendChild(window.document.createElement('div'));
+  await settle();
+
+  assert.deepEqual(counts(chromeStub), [1]);
+});
+
+test('reports again when the page comes back from the back-forward cache', async () => {
+  const chromeStub = storageStub({ ghun: { enabled: true, mappings: MAPPINGS } });
+  const window = setup('<p>u1069002</p>', { chromeStub });
+  await settle();
+
+  const event = new window.Event('pageshow');
+  event.persisted = true;
+  window.dispatchEvent(event);
+
+  assert.deepEqual(counts(chromeStub), [1, 1]);
+});
+
 // --- highlight color --------------------------------------------------------
 
 /**

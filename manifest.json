@@ -3,8 +3,12 @@
   "name": "GitHub Username Renamer",
   "version": "1.0.0",
   "description": "Show real names instead of GitHub usernames across github.com, with profile links left intact.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": ["https://github.com/*"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "action": {
     "default_popup": "src/popup.html",
     "default_title": "GitHub Username Renamer",
@@ -13,6 +17,16 @@
       "32": "icons/icon32.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/popup.html",
+    "open_in_tab": false
+  },
+  "commands": {
+    "toggle-replacement": {
+      "suggested_key": { "default": "Alt+Shift+U" },
+      "description": "Turn name replacement on or off"
     }
   },
   "icons": {
@@ -24,7 +38,7 @@
   "content_scripts": [
     {
       "matches": ["https://github.com/*"],
-      "js": ["src/common.js", "src/store.js", "src/content.js", "src/hovercard.js"],
+      "js": ["src/common.js", "src/store.js", "src/content.js", "src/hovercard.js", "src/collect.js"],
       "css": ["src/content.css"],
       "run_at": "document_end",
       "all_frames": false

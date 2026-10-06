@@ -78,6 +78,9 @@
   const queuedRoots = new Set();
   let flushScheduled = false;
 
+  /** The count the toolbar badge last heard, so an unchanged one isn't resent. */
+  let reportedCount = -1;
+
   // --- element filtering -----------------------------------------------------
 
   /**
@@ -291,6 +294,25 @@
     if (spans.length) scope.normalize();
   }
 
+  // --- toolbar badge ---------------------------------------------------------
+
+  /** Tell the service worker how many names this page shows replaced. */
+  function reportCount() {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) return;
+
+    const count = settings.enabled ? document.querySelectorAll(`span.${CLASS}`).length : 0;
+    if (count === reportedCount) return;
+    reportedCount = count;
+
+    try {
+      // Rejects while the worker is restarting or after the extension reloads;
+      // the next change reports again.
+      Promise.resolve(chrome.runtime.sendMessage({ type: 'ghun:count', count })).catch(() => {});
+    } catch {
+      /* the extension context is gone */
+    }
+  }
+
   // --- mutation handling -----------------------------------------------------
 
   function flush() {
@@ -302,9 +324,10 @@
 
     if (roots.length > FULL_RESCAN_THRESHOLD) {
       scan(document.body);
-      return;
+    } else {
+      for (const root of roots) scan(root);
     }
-    for (const root of roots) scan(root);
+    reportCount();
   }
 
   function queueRoot(node) {
@@ -397,6 +420,7 @@
 
     restoreAll();
     if (settings.enabled && matcher) scan(document.body);
+    reportCount();
   }
 
   /**
@@ -425,6 +449,7 @@
       (stored) => {
         applySettings(stored, { rescan: false });
         if (settings.enabled && matcher) scan(document.body);
+        reportCount();
         startObserver();
         watchColor();
       },
@@ -446,8 +471,20 @@
     document.addEventListener('turbo:load', () => {
       applyColor();
       scan(document.body);
+      reportCount();
     });
-    document.addEventListener('turbo:frame-load', (event) => scan(event.target));
+    document.addEventListener('turbo:frame-load', (event) => {
+      scan(event.target);
+      reportCount();
+    });
+
+    // Chrome clears a tab's badge when it navigates, and a page restored from
+    // the back-forward cache is a navigation that runs none of the above.
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      reportedCount = -1;
+      reportCount();
+    });
   }
 
   // Exposed for hovercard.js, the test suite, and the offline demo page.
