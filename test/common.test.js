@@ -12,6 +12,7 @@ const {
   parseImport,
   coerceSettings,
   looksLikeUrl,
+  describeSaveError,
 } = globalThis.GHUN;
 
 /** Run the matcher the way content.js does and return the matched tokens. */
@@ -215,4 +216,15 @@ test('parseImport rejects unusable files with a readable message', () => {
   assert.throws(() => parseImport('{nope'), /valid JSON/);
   assert.throws(() => parseImport('[1,2,3]'), /JSON object/);
   assert.throws(() => parseImport('{"!!!":"x"}'), /No usable username mappings/);
+});
+
+test('describes a full sync store in plain words', () => {
+  assert.match(describeSaveError(new Error('QUOTA_BYTES quota exceeded')), /storage is full/);
+});
+
+test('passes any other save error through', () => {
+  assert.equal(
+    describeSaveError(new Error('MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded')),
+    'Could not save: MAX_WRITE_OPERATIONS_PER_MINUTE quota exceeded'
+  );
 });

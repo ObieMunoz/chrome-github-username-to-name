@@ -8,8 +8,19 @@
 (function (root) {
   'use strict';
 
-  /** Single storage key holding the whole settings object. */
+  /** Storage key holding the settings, and the count of mapping chunks beside it. */
   const STORAGE_KEY = 'ghun';
+
+  /** Mappings are spread over `ghun.m.0`, `ghun.m.1`, … so no one item hits the cap. */
+  const CHUNK_PREFIX = 'ghun.m.';
+
+  /**
+   * chrome.storage.sync refuses any item over 8192 bytes, counted as the key
+   * plus the value's JSON. With the whole map in one item that capped the
+   * extension at a couple of hundred names, so each chunk is filled to just
+   * under the cap instead, and the limit becomes sync's 100KB total.
+   */
+  const ITEM_BYTE_BUDGET = 8000;
 
   const DEFAULT_SETTINGS = {
     enabled: true,
@@ -339,6 +350,77 @@
     };
   }
 
+  /** UTF-8 length, which is what the storage quota counts. */
+  function byteLength(text) {
+    let bytes = 0;
+    for (const char of text) {
+      const code = char.codePointAt(0);
+      bytes += code < 0x80 ? 1 : code < 0x800 ? 2 : code < 0x10000 ? 3 : 4;
+    }
+    return bytes;
+  }
+
+  /**
+   * Lay settings out as the storage items they are saved as: the settings item,
+   * naming how many chunks follow, and the chunks themselves.
+   */
+  function packSettings(settings) {
+    const chunks = [];
+    let current = {};
+    // Room for the braces and the longest chunk key there will realistically be.
+    const overhead = 2 + CHUNK_PREFIX.length + 6;
+    let size = overhead;
+
+    for (const username of Object.keys(settings.mappings).sort()) {
+      const replacement = settings.mappings[username];
+      const entry = byteLength(`${JSON.stringify(username)}:${JSON.stringify(replacement)},`);
+      if (size + entry > ITEM_BYTE_BUDGET && size > overhead) {
+        chunks.push(current);
+        current = {};
+        size = overhead;
+      }
+      current[username] = replacement;
+      size += entry;
+    }
+    if (size > overhead) chunks.push(current);
+
+    const items = {
+      [STORAGE_KEY]: { enabled: settings.enabled, color: settings.color, chunks: chunks.length },
+    };
+    chunks.forEach((chunk, index) => {
+      items[`${CHUNK_PREFIX}${index}`] = chunk;
+    });
+    return items;
+  }
+
+  /**
+   * Reassemble settings from stored items. Chunks beyond the count the settings
+   * item names are leftovers from a larger save and are ignored. The old format,
+   * with every mapping inside the settings item, is still read.
+   */
+  function unpackSettings(items) {
+    const source = items || {};
+    const meta = source[STORAGE_KEY] && typeof source[STORAGE_KEY] === 'object' ? source[STORAGE_KEY] : {};
+    const mappings = { ...(meta.mappings && typeof meta.mappings === 'object' ? meta.mappings : {}) };
+
+    const count = Number.isInteger(meta.chunks) ? meta.chunks : 0;
+    for (let index = 0; index < count; index += 1) {
+      const chunk = source[`${CHUNK_PREFIX}${index}`];
+      if (chunk && typeof chunk === 'object') Object.assign(mappings, chunk);
+    }
+
+    return coerceSettings({ enabled: meta.enabled, color: meta.color, mappings });
+  }
+
+  /** A refused storage write, put the way someone deciding what to do next needs it. */
+  function describeSaveError(error) {
+    const message = String((error && error.message) || error);
+    if (/QUOTA_BYTES/.test(message)) {
+      return 'Chrome sync storage is full. Remove a few names to make room.';
+    }
+    return `Could not save: ${message}`;
+  }
+
   /**
    * Read pasted JSON back into a mappings object.
    * Accepts both the wrapped export format and a bare `{username: name}` map.
@@ -382,6 +464,8 @@
 
   root.GHUN = {
     STORAGE_KEY,
+    CHUNK_PREFIX,
+    ITEM_BYTE_BUDGET,
     DEFAULT_SETTINGS,
     DEFAULT_COLOR,
     THEME_BACKGROUNDS,
@@ -403,6 +487,9 @@
     contrastRatio,
     coerceColor,
     coerceSettings,
+    packSettings,
+    unpackSettings,
+    describeSaveError,
     parseImport,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : self);

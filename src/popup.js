@@ -8,21 +8,20 @@
   'use strict';
 
   const {
-    STORAGE_KEY,
     DEFAULT_COLOR,
     THEME_BACKGROUNDS,
     MIN_CONTRAST,
     normalizeUsername,
     isValidUsername,
-    coerceSettings,
+    describeSaveError,
     parseImport,
     parseHex,
     toHex,
     rgbToHsl,
     hslToRgb,
     contrastRatio,
-    fitToBackground,
   } = globalThis.GHUN;
+  const store = globalThis.GHUN_STORE;
 
   const el = {
     enabled: document.getElementById('enabled'),
@@ -55,34 +54,20 @@
   // --- storage ---------------------------------------------------------------
 
   function load() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(STORAGE_KEY, (result) => {
-        resolve(coerceSettings(result[STORAGE_KEY]));
-      });
-    });
+    return store.load(chrome.storage.sync);
   }
 
-  function save() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.set({ [STORAGE_KEY]: settings }, () => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          // The whole map lives in one sync item, capped at 8KB.
-          showStatus(
-            /quota/i.test(error.message)
-              ? 'Out of sync storage. Copy a backup, then remove a few entries.'
-              : `Could not save: ${error.message}`,
-            true
-          );
-          resolve(false);
-          return;
-        }
-        // The export box shows what is stored, so it is refreshed where the
-        // store is written — every path that changes a setting ends up here.
-        renderExport();
-        resolve(true);
-      });
-    });
+  async function save() {
+    try {
+      await store.save(chrome.storage.sync, settings);
+    } catch (error) {
+      showStatus(describeSaveError(error), true);
+      return false;
+    }
+    // The export box shows what is stored, so it is refreshed where the
+    // store is written — every path that changes a setting ends up here.
+    renderExport();
+    return true;
   }
 
   // --- views -----------------------------------------------------------------

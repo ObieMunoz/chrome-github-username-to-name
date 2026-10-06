@@ -11,13 +11,13 @@
   'use strict';
 
   const {
-    STORAGE_KEY,
     DEFAULT_SETTINGS,
     buildMatcher,
     looksLikeUrl,
     isRepoRootPath,
     coerceSettings,
   } = globalThis.GHUN;
+  const store = globalThis.GHUN_STORE;
 
   const CLASS = 'ghun-name';
   const SOURCE_CLASS = 'ghun-source';
@@ -421,18 +421,22 @@
   function start() {
     if (!isContextAlive()) return;
 
-    chrome.storage.sync.get(STORAGE_KEY, (result) => {
-      if (chrome.runtime.lastError) return;
-      applySettings(result[STORAGE_KEY], { rescan: false });
-      if (settings.enabled && matcher) scan(document.body);
-      startObserver();
-      watchColor();
-    });
+    store.load(chrome.storage.sync).then(
+      (stored) => {
+        applySettings(stored, { rescan: false });
+        if (settings.enabled && matcher) scan(document.body);
+        startObserver();
+        watchColor();
+      },
+      () => {}
+    );
 
+    // A save spans several items, so any one of them changing means re-reading
+    // the lot rather than trusting the one that changed.
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'sync' || !changes[STORAGE_KEY]) return;
+      if (area !== 'sync' || !Object.keys(changes).some(store.isStoreKey)) return;
       if (!isContextAlive()) return shutdown();
-      applySettings(changes[STORAGE_KEY].newValue);
+      store.load(chrome.storage.sync).then((stored) => applySettings(stored), () => {});
     });
 
     // Turbo can swap the whole body at once; the observers catch that, but a
